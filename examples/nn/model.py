@@ -150,19 +150,19 @@ class BaseAutoEncoder(nn.Module):
         x_recon = self._dec(z)
         return x_recon
 
-    def forward(self, x) -> torch.Tensor:
+    def forward(self, x, detach_z=False) -> torch.Tensor:
         assert not self.training, 'model not in evaluation mode'
         # deterministic forward if evaluating
         posterior = self.encode(x)
-        z = posterior.mean
+        z = posterior.mean.detach() if detach_z else posterior.mean
         recon = self.decode(z)
         return recon
 
-    def forward_train(self, x) -> Tuple[torch.Tensor, torch.Tensor, Normal, Normal]:
+    def forward_train(self, x, detach_z=False) -> Tuple[torch.Tensor, torch.Tensor, Normal, Normal]:
         assert self.training, 'model not in training mode'
         # stochastic forward if training
         posterior, prior = self.encode(x, return_prior=True)
-        z = posterior.rsample()
+        z = posterior.rsample().detach() if detach_z else posterior.rsample()
         recon = self.decode(z)
         return recon, z, posterior, prior
 

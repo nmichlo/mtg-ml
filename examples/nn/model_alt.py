@@ -121,8 +121,11 @@ def ConvUp(in_channels: int, out_channels: int, kernel_size: int = 4, upsample='
 
 class AutoEncoderSkips(BaseAutoEncoder):
 
-    def __init__(self, z_size: int = 128, c_repr: int = 16, repr_hidden_size: Optional[int] = None, channel_mul=1.5, channel_start=16, channel_dec_mul: float = 1.0, skip_mode='some', skip_upsample='bilinear', skip_downsample='ave', upsample='stride', downsample='stride', activation='leaky_relu', norm='instance', sigmoid_out=False, weight_init=None):
+    def __init__(self, z_size: int = 128, c_repr: int = 16, img_channels: int = 3, repr_hidden_size: Optional[int] = None, channel_mul=1.5, channel_start=16, channel_dec_mul: float = 1.0, skip_mode='some', skip_upsample='bilinear', skip_downsample='ave', upsample='stride', downsample='stride', activation='leaky_relu', norm='instance', sigmoid_out=False, weight_init=None):
         super().__init__()
+
+        # variables
+        im_ch = img_channels
 
         # weight scaled
         weight_scale, norm = {
@@ -159,7 +162,7 @@ class AutoEncoderSkips(BaseAutoEncoder):
             def __init__(self):
                 super().__init__()
                 # encoder skips
-                self.enc1 = ConvDown(in_channels=3,     out_channels=ce(0),   kernel_size=down_k, pool=pool);   self.act1 = Act(shape_or_features=[ce(0), 112, 80])
+                self.enc1 = ConvDown(in_channels=im_ch, out_channels=ce(0),   kernel_size=down_k, pool=pool);   self.act1 = Act(shape_or_features=[ce(0), 112, 80])
                 self.enc2 = ConvDown(in_channels=ce(0), out_channels=ce(1),   kernel_size=down_k, pool=pool);   self.act2 = Act(shape_or_features=[ce(1),  56, 40])
                 self.enc3 = ConvDown(in_channels=ce(1), out_channels=ce(2),   kernel_size=down_k, pool=pool);   self.act3 = Act(shape_or_features=[ce(2),  28, 20])
                 self.enc4 = ConvDown(in_channels=ce(2), out_channels=ce(3),   kernel_size=down_k, pool=pool);   self.act4 = Act(shape_or_features=[ce(3),  14, 10])
@@ -223,7 +226,7 @@ class AutoEncoderSkips(BaseAutoEncoder):
                 self.dec3 = ConvUp(in_channels=cd(2),  out_channels=cd(1),  kernel_size=up_k, upsample=upsample); self.act3 = Act(shape_or_features=[cd(1),  56, 40])
                 self.dec4 = ConvUp(in_channels=cd(1),  out_channels=cd(0),  kernel_size=up_k, upsample=upsample); self.act4 = Act(shape_or_features=[cd(0), 112, 80])
                 self.dec5 = ConvUp(in_channels=cd(0),  out_channels=cd(-1), kernel_size=up_k, upsample=upsample); self.act5 = Act(shape_or_features=None)  # we don't want normalisation here
-                self.out  =   Conv(in_channels=cd(-1), out_channels=3,      kernel_size=3)
+                self.out  =   Conv(in_channels=cd(-1), out_channels=im_ch,  kernel_size=3)
                 # skip_connections starting at x0
                 self.s0_1 = nn.Sequential(Upsample(scale_factor=2),  SingleConv(c_repr, cd(3)))
                 self.s0_2 = nn.Sequential(Upsample(scale_factor=4),  SingleConv(c_repr, cd(2)))
@@ -278,12 +281,12 @@ class AutoEncoderSkips(BaseAutoEncoder):
 
         # BASE MODES
 
-        self.__enc = nn.Sequential(
+        self._encoder = nn.Sequential(
             _EncSkips(),
             ReprDown(in_shape=[c_repr, 7, 5], hidden_size=repr_hidden_size, out_size=z_size * 2),
         )
 
-        self.__dec = nn.Sequential(
+        self._decoder = nn.Sequential(
             ReprUp(in_size=z_size, hidden_size=repr_hidden_size, out_shape=[c_repr, 7, 5]),
             _DecSkips(),
             *([nn.Sigmoid()] if sigmoid_out else []),
@@ -304,10 +307,10 @@ class AutoEncoderSkips(BaseAutoEncoder):
             init_model_weights(self, mode=weight_init)
 
     def _enc(self, x):
-        return self.__enc(x)
+        return self._encoder(x)
 
     def _dec(self, z):
-        return self.__dec(z)
+        return self._decoder(z)
 
 
 # ========================================================================= #

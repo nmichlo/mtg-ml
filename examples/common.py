@@ -373,7 +373,7 @@ def make_mtg_trainer(
     # trainer kwargs
     trainer_kwargs: dict = None,
     # logging
-    wandb=False,
+    wandb_enabled: bool = False,
     wandb_name: str = None,
     wandb_project: str = None,
     wandb_kwargs: dict = None,
@@ -382,12 +382,12 @@ def make_mtg_trainer(
 
     # initialise callbacks
     callbacks = []
-    if wandb:
+    if wandb_enabled:
         callbacks.append(WandbContextManagerCallback())
     if visualize_period and (visualize_input is not None):
         for k, v in visualize_input.items():
             v, mean_std = (v if isinstance(v, tuple) else (v, None))
-            callbacks.append(VisualiseCallback(name=k, input_batch=v, every_n_steps=visualize_period, log_wandb=wandb, log_local=not wandb, mean_std=mean_std))
+            callbacks.append(VisualiseCallback(name=k, input_batch=v, every_n_steps=visualize_period, log_wandb=wandb_enabled, log_local=not wandb_enabled, mean_std=mean_std))
 
     if checkpoint_period:
         from pytorch_lightning.callbacks import ModelCheckpoint
@@ -401,7 +401,7 @@ def make_mtg_trainer(
 
     # initialise logger
     logger = True
-    if wandb:
+    if wandb_enabled:
         assert isinstance(wandb_name, str) and wandb_name, f'`wandb_name` must be a non-empty str, got: {repr(wandb_name)}'
         assert isinstance(wandb_project, str) and wandb_project, f'`wandb_project` must be a non-empty str, got: {repr(wandb_project)}'
         from pytorch_lightning.loggers import WandbLogger

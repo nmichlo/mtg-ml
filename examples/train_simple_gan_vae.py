@@ -459,7 +459,7 @@ if __name__ == '__main__':
                 'samples': system.sample_z(8),
                 'recons': torch.stack([datamodule.data[i] for i in [3466, 18757, 20000, 40000, 21586, 20541, 1100]]),
             },
-            wandb=wandb,
+            wandb_enabled=wandb,
             wandb_project='MTG-GAN',
             wandb_name='MTG-GAN',
             wandb_kwargs=dict(tags=['large']),

@@ -22,6 +22,8 @@ def init_model_weights(model: nn.Module, mode='xavier_normal', verbose=False):
     count = 0
     def _init(init: bool, m: nn.Module, attr: str, mode: str):
         w = getattr(m, attr)
+        if w is None:
+            return
         if init and init_weights(w, mode=mode):
             if verbose: print(f'| {count:03d} \033[92mINIT\033[0m: {m.__class__.__name__}:{attr:15s} | {mode:20s}: {repr(list(w.shape)):15s} | {w.mean()} {w.std()} {w.min()} {w.max()}')
         else:

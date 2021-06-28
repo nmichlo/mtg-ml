@@ -17,9 +17,12 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from examples.common import BaseLightningModule
+from examples.common import make_mtg_datamodule
 from examples.common import make_mtg_trainer
 from examples.common import normalize_image_batch
 from examples.common import normalize_image_obs
+from examples.experiments.nn_weights import init_model_weights
+from examples.experiments.nn_weights import init_weights
 from examples.nn.loss import get_recon_loss
 from examples.nn.loss import kl_loss
 from examples.nn.model import BaseAutoEncoder
@@ -28,6 +31,7 @@ from examples.nn.model import BaseAutoEncoder
 # ========================================================================= #
 # Model                                                                     #
 # ========================================================================= #
+from examples.nn.model_alt import AutoEncoderSkips
 
 
 class ResidualBlock(nn.Module):
@@ -56,12 +60,10 @@ class ResidualBlock(nn.Module):
         self.relu2 = nn.LeakyReLU(0.2, inplace=True)
 
     def forward(self, x):
-        identity_data = self.conv_expand(x)
-        output = self.relu1(self.bn1(self.conv1(x)))
-        output = self.conv2(output)
-        output = self.bn2(output)
-        output = self.relu2(torch.add(output, identity_data))
-        return output
+        skip = self.conv_expand(x)
+        x = self.relu1(self.bn1(self.conv1(x)))
+        x = self.relu2(self.bn2(self.conv2(x)) + skip)
+        return x
 
 
 class Encoder(nn.Module):
@@ -178,21 +180,21 @@ def _get_celeba(image_size: int, train_size: int):
     # verify celeba | manual download from: https://drive.google.com/drive/folders/0B7EVK8r0v71pTUZsaXdaSnZBZzg
     data = CelebA(_DATA_ROOT, download=False)
     # load images directly
-    data = ImageFolder(os.path.join(data.root, data.base_folder), transform=transforms.Compose([transforms.Resize(image_size), transforms.ToTensor()]))
+    data = ImageFolder(os.path.join(data.root, data.base_folder), transform=transforms.Compose([transforms.Resize(image_size), transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))
     # original partition code: [x for x in os.listdir('data/celeba/img_align_celeba') if is_image_file(x)][:162770]
     data = torch.utils.data.Subset(data, indices=list(range(train_size)))
     return data
 
 
 _DATASET_SETTINGS = {
-    'cifar10':     DatasetSettings(image_size=32,   ch=3, channels=(64, 128, 256),                        make_dataset=lambda:     torchvision.datasets.CIFAR10(root=_DATA_ROOT, train=True,     download=True, transform=transforms.ToTensor())),
+    'cifar10':     DatasetSettings(image_size=32,   ch=3, channels=(64, 128, 256),                        make_dataset=lambda:     torchvision.datasets.CIFAR10(root=_DATA_ROOT, train=True,     download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
     'celeb128':    DatasetSettings(image_size=128,  ch=3, channels=(64, 128, 256, 512, 512),              make_dataset=lambda: _get_celeba(1024, 162770)),
     'celeb256':    DatasetSettings(image_size=256,  ch=3, channels=(64, 128, 256, 512, 512, 512),         make_dataset=lambda: _get_celeba(1024, 162770)),
     'celeb1024':   DatasetSettings(image_size=1024, ch=3, channels=(16, 32, 64, 128, 256, 512, 512, 512), make_dataset=lambda: _get_celeba(1024, 29000)),
-    'monsters128': DatasetSettings(image_size=128,  ch=3, channels=(64, 128, 256, 512, 512),              make_dataset=lambda:            DigitalMonstersDataset(root_path=os.path.join(_DATA_ROOT, 'monsters'), output_height=128)),
-    'svhn':        DatasetSettings(image_size=32,   ch=3, channels=(64, 128, 256),                        make_dataset=lambda:         torchvision.datasets.SVHN(root=_DATA_ROOT, split='train', download=True, transform=transforms.ToTensor())),
-    'fmnist':      DatasetSettings(image_size=28,   ch=1, channels=(64, 128),                             make_dataset=lambda: torchvision.datasets.FashionMNIST(root=_DATA_ROOT, train=True,    download=True, transform=transforms.ToTensor())),
-    'mnist':       DatasetSettings(image_size=28,   ch=1, channels=(64, 128),                             make_dataset=lambda:        torchvision.datasets.MNIST(root=_DATA_ROOT, train=True,    download=True, transform=transforms.ToTensor())),
+  # 'monsters128': DatasetSettings(image_size=128,  ch=3, channels=(64, 128, 256, 512, 512),              make_dataset=lambda:            DigitalMonstersDataset(root_path=os.path.join(_DATA_ROOT, 'monsters'), output_height=128 , transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
+    'svhn':        DatasetSettings(image_size=32,   ch=3, channels=(64, 128, 256),                        make_dataset=lambda:         torchvision.datasets.SVHN(root=_DATA_ROOT, split='train', download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
+    'fmnist':      DatasetSettings(image_size=28,   ch=1, channels=(64, 128),                             make_dataset=lambda: torchvision.datasets.FashionMNIST(root=_DATA_ROOT, train=True,    download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
+    'mnist':       DatasetSettings(image_size=28,   ch=1, channels=(64, 128),                             make_dataset=lambda:        torchvision.datasets.MNIST(root=_DATA_ROOT, train=True,    download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
 }
 
 
@@ -213,8 +215,9 @@ class SoftIntroVaeSystem(BaseLightningModule):
             dataset: str,
             z_dim: int = 128,
         # training
-            lr_e: float = 2e-4,
-            lr_d: float = 2e-4,
+            lr_enc: float = 2e-4,
+            lr_dec: float = 2e-4,
+            lr_vae: float = 1e-3,
             recon_loss: str = "mse",
             train_steps_vae: int = 0,
         # loss scaling
@@ -236,11 +239,13 @@ class SoftIntroVaeSystem(BaseLightningModule):
         self.model = SoftIntroVae(cdim=self.dataset_settings.ch, zdim=self.hparams.z_dim, channels=self.dataset_settings.channels, image_size=self.dataset_settings.image_size)
 
     def configure_optimizers(self):
-        optimizer_e = optim.Adam(self.model._encoder.parameters(), lr=self.hparams.lr_e)
-        optimizer_d = optim.Adam(self.model._decoder.parameters(), lr=self.hparams.lr_d)
-        e_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_e, milestones=(350,), gamma=0.1)
-        d_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_d, milestones=(350,), gamma=0.1)
-        return [optimizer_e, optimizer_d], [e_scheduler, d_scheduler]
+        optimizer_vae = optim.Adam(self.model.parameters(),          lr=self.hparams.lr_vae)
+        optimizer_enc = optim.Adam(self.model._encoder.parameters(), lr=self.hparams.lr_enc)
+        optimizer_dec = optim.Adam(self.model._decoder.parameters(), lr=self.hparams.lr_dec)
+        vae_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_vae, milestones=(350,), gamma=0.1)
+        enc_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_enc, milestones=(350,), gamma=0.1)
+        dec_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_dec, milestones=(350,), gamma=0.1)
+        return [optimizer_vae, optimizer_enc, optimizer_dec], [vae_scheduler, enc_scheduler, dec_scheduler]
 
     def training_step(self, batch, batch_idx: int, optimizer_idx: int):
         # always 4 dimensions & a single tensor
@@ -252,6 +257,10 @@ class SoftIntroVaeSystem(BaseLightningModule):
         # STANDARD VAE TRAINING STEP (update encoder and decoder)
         # - this should be the same as the logic in train_simple_vae
         if self.trainer.global_step < self.hparams.train_steps_vae:
+            # skip other steps
+            if optimizer_idx != 0:
+                return None
+            # train vae like usual
             recon, z, posterior, prior = self.model.forward_train(batch)
             # compute recon loss
             loss_recon = self.hparams.beta_rec * self._loss(recon, batch, reduction='mean')
@@ -266,7 +275,7 @@ class SoftIntroVaeSystem(BaseLightningModule):
             return loss
 
         # ENCODER TRAINING STEP
-        if optimizer_idx == 0:
+        if optimizer_idx == 1:
             recon_fake = self.model.decode(torch.randn(size=(len(batch), self.hparams.z_dim), device=self.device))
 
             # feed forward
@@ -304,14 +313,14 @@ class SoftIntroVaeSystem(BaseLightningModule):
             # backprop (must only update encoder)
             return loss
 
-        elif optimizer_idx == 1:
+        elif optimizer_idx == 2:
             # this should originally be re-used from the previous step
             recon_fake = self.model.decode(torch.randn(size=(len(batch), self.hparams.z_dim), device=self.device))
 
             # feed forward
-            rec_real, z_real, posterior_real, prior_real = self.model.forward_train(batch)       # TODO: this should detach z_real before feeding it through the decoder
-            rec_rec,  z_rec,  posterior_rec,  prior_rec  = self.model.forward_train(rec_real)    # TODO: this should detach z_rec  before feeding it through the decoder
-            rec_fake, z_fake, posterior_fake, prior_fake = self.model.forward_train(recon_fake)  # TODO: this should detach z_fake before feeding it through the decoder
+            rec_real, z_real, posterior_real, prior_real = self.model.forward_train(batch, detach_z=True)
+            rec_rec,  z_rec,  posterior_rec,  prior_rec  = self.model.forward_train(rec_real, detach_z=True)
+            rec_fake, z_fake, posterior_fake, prior_fake = self.model.forward_train(recon_fake, detach_z=True)
 
             # kl divergences
             loss_real = self._loss(rec_real, batch,               reduction="mean")
@@ -378,39 +387,51 @@ if __name__ == '__main__':
         'svhn':        ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_dim=128, batch_size=32),
         'fmnist':      ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_dim=32,  batch_size=128),
         'mnist':       ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_dim=32,  batch_size=128),
+        'mtg':         ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=1024, z_dim=256, batch_size=32),  # verify settings
     }
 
-    def main(dataset: str = 'mnist'):
-        settings = _SETTINGS[dataset]
+    def main(dataset: str = 'mtg', wandb_enabled: bool = False):
+        cfg = _SETTINGS[dataset]
 
         print('[initialising]: model')
         system = SoftIntroVaeSystem(
             dataset=dataset,
-            beta_kl=settings.beta_kl,
-            beta_rec=settings.beta_rec,
-            beta_neg=settings.beta_neg,
-            z_dim=settings.z_dim,
+            beta_kl=cfg.beta_kl,
+            beta_rec=cfg.beta_rec,
+            beta_neg=cfg.beta_neg,
+            z_dim=cfg.z_dim,
+            lr_dec=2e-4,
+            lr_enc=2e-4,
+            lr_vae=2e-4,
+            train_steps_vae=2000,
         )
+
+        # initialise model
+        # init_model_weights(system.model, mode='xavier_normal', verbose=True)
 
         # get dataset & visualise images
         print('[initialising]: data')
-        data = system.dataset_settings.make_dataset()
-        dataset = DataLoader(data, batch_size=settings.batch_size, shuffle=True, num_workers=os.cpu_count())
-        vis_imgs = torch.stack([normalize_image_obs(data[i]) for i in range(5)])
+        mean_std = (0.5, 0.5)
+        dataset  = DataLoader(system.dataset_settings.make_dataset(), batch_size=cfg.batch_size, shuffle=True, num_workers=os.cpu_count())
+        vis_imgs = torch.stack([normalize_image_obs(dataset.dataset[i]) for i in range(5)])
 
         # start training model
         print('[initialising]: trainer')
         trainer = make_mtg_trainer(
             train_epochs=400,
-            visualize_period=10,
-            visualize_input={'recons': vis_imgs},
-            # wandb_project='MTG-VAE',
-            # wandb_name=f'mtg-vae|{h.z_size}:{h.repr_hidden_size}:{h.repr_channels}:{h.channel_start}:{h.channel_mul}:{h.channel_dec_mul}',
-            # wandb=True,
+            visualize_period=500,
+            visualize_input={'recons': (vis_imgs, mean_std)},
+            # wandb settings
+            wandb_project='soft-intro-vae',
+            wandb_name=f'{dataset}:{cfg.z_dim}',
+            wandb_enabled=wandb_enabled,
         )
 
         trainer.fit(system, dataset)
 
     # ENTRYPOINT
     logging.basicConfig(level=logging.INFO)
-    main()
+    main(
+        dataset='mnist',
+        wandb_enabled=False,
+    )

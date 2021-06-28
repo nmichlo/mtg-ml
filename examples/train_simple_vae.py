@@ -204,7 +204,7 @@ if __name__ == '__main__':
             visualize_input={'recons': (vis_imgs, mean_std)},
             wandb_project='MTG-VAE',
             wandb_name=f'mtg-vae|{h.z_size}:{h.repr_hidden_size}:{h.repr_channels}:{h.channel_start}:{h.channel_mul}:{h.channel_dec_mul}',
-            wandb=True,
+            wandb_enabled=True,
             # distributed
             trainer_kwargs=dict(accelerator='ddp'),
             cuda=-1,
