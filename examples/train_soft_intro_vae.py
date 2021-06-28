@@ -217,9 +217,7 @@ class SoftIntroVaeSystem(BaseLightningModule):
         # training
             lr_enc: float = 2e-4,
             lr_dec: float = 2e-4,
-            lr_vae: float = 1e-3,
             recon_loss: str = "mse",
-            train_steps_vae: int = 0,
         # loss scaling
             beta_kl: float = 1.0,
             beta_rec: float = 1.0,
@@ -239,13 +237,11 @@ class SoftIntroVaeSystem(BaseLightningModule):
         self.model = SoftIntroVae(cdim=self.dataset_settings.ch, zdim=self.hparams.z_dim, channels=self.dataset_settings.channels, image_size=self.dataset_settings.image_size)
 
     def configure_optimizers(self):
-        optimizer_vae = optim.Adam(self.model.parameters(),          lr=self.hparams.lr_vae)
         optimizer_enc = optim.Adam(self.model._encoder.parameters(), lr=self.hparams.lr_enc)
         optimizer_dec = optim.Adam(self.model._decoder.parameters(), lr=self.hparams.lr_dec)
-        vae_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_vae, milestones=(350,), gamma=0.1)
         enc_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_enc, milestones=(350,), gamma=0.1)
         dec_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_dec, milestones=(350,), gamma=0.1)
-        return [optimizer_vae, optimizer_enc, optimizer_dec], [vae_scheduler, enc_scheduler, dec_scheduler]
+        return [optimizer_enc, optimizer_dec], [enc_scheduler, dec_scheduler]
 
     def training_step(self, batch, batch_idx: int, optimizer_idx: int):
         # always 4 dimensions & a single tensor
@@ -254,28 +250,8 @@ class SoftIntroVaeSystem(BaseLightningModule):
         # CALCULATE FID SCORE
         self._compute_fid()
 
-        # STANDARD VAE TRAINING STEP (update encoder and decoder)
-        # - this should be the same as the logic in train_simple_vae
-        if self.trainer.global_step < self.hparams.train_steps_vae:
-            # skip other steps
-            if optimizer_idx != 0:
-                return None
-            # train vae like usual
-            recon, z, posterior, prior = self.model.forward_train(batch)
-            # compute recon loss
-            loss_recon = self.hparams.beta_rec * self._loss(recon, batch, reduction='mean')
-            # compute kl divergence
-            loss_kl = self.hparams.beta_kl * kl_loss(posterior, prior, reduction='mean')
-            # combined loss
-            loss = loss_recon + loss_kl
-            # return loss
-            self.log('vae_kl',    loss_kl,    on_step=True, prog_bar=True)
-            self.log('vae_recon', loss_recon, on_step=True)
-            self.log('vae_loss',  loss,       on_step=True)
-            return loss
-
         # ENCODER TRAINING STEP
-        if optimizer_idx == 1:
+        if optimizer_idx == 0:
             recon_fake = self.model.decode(torch.randn(size=(len(batch), self.hparams.z_dim), device=self.device))
 
             # feed forward
@@ -313,7 +289,8 @@ class SoftIntroVaeSystem(BaseLightningModule):
             # backprop (must only update encoder)
             return loss
 
-        elif optimizer_idx == 2:
+        # DECODER TRAINING STEP
+        elif optimizer_idx == 1:
             # this should originally be re-used from the previous step
             recon_fake = self.model.decode(torch.randn(size=(len(batch), self.hparams.z_dim), device=self.device))
 
@@ -346,6 +323,18 @@ class SoftIntroVaeSystem(BaseLightningModule):
 
             # backprop (must only update decoder)
             return loss
+
+        # make sure we handle all cases!
+        else:
+            raise RuntimeError('this should never happen!')
+
+        # handle invalid KL -- TODO
+        # diff_kls.append(-kl_real.item() + kl_fake.item())
+        # if np.mean(diff_kls) < -1.0:
+        #     print(f'the kl difference [{np.mean(diff_kls):.3f}] between fake and real is negative (no sampling improvement)')
+        #     print("try to lower beta_neg hyperparameter")
+        #     print("exiting...")
+        #     raise RuntimeError("Negative KL Difference")
 
     def forward(self, x):
         return self.model(x)
@@ -402,12 +391,7 @@ if __name__ == '__main__':
             z_dim=cfg.z_dim,
             lr_dec=2e-4,
             lr_enc=2e-4,
-            lr_vae=2e-4,
-            train_steps_vae=2000,
         )
-
-        # initialise model
-        # init_model_weights(system.model, mode='xavier_normal', verbose=True)
 
         # get dataset & visualise images
         print('[initialising]: data')
@@ -421,6 +405,7 @@ if __name__ == '__main__':
             train_epochs=400,
             visualize_period=500,
             visualize_input={'recons': (vis_imgs, mean_std)},
+            checkpoint_monitor=None,
             # wandb settings
             wandb_project='soft-intro-vae',
             wandb_name=f'{dataset}:{cfg.z_dim}',
