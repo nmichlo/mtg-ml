@@ -23,8 +23,6 @@
 #  ~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~
 
 import logging
-import os
-from typing import Callable
 from typing import Optional
 
 import torch
@@ -34,9 +32,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from examples.common import BaseLightningModule
 from examples.common import make_mtg_datamodule
 from examples.common import make_mtg_trainer
-from examples.nn.loss import LaplaceMseLoss
-from examples.nn.loss import MseLoss
-from examples.nn.loss import SpatialFreqLoss
+from examples.nn.loss import get_recon_loss
+from examples.nn.loss import kl_loss
 from examples.nn.model_alt import AutoEncoderSkips
 
 
@@ -93,14 +90,7 @@ class MtgVaeSystem(BaseLightningModule):
             sigmoid_out=False,
         )
         # get loss
-        if self.hparams.recon_loss == 'mse':
-            self._loss = MseLoss()
-        elif self.hparams.recon_loss == 'mse_laplace':
-            self._loss = LaplaceMseLoss()
-        elif self.hparams.recon_loss == 'mse_freq':
-            self._loss = SpatialFreqLoss()
-        else:
-            raise KeyError(f'invalid recon_loss: {self.hparams.recon_loss}')
+        self._loss = get_recon_loss(self.hparams.recon_loss)
 
     def configure_optimizers(self):
         optimizer = Adam(self.parameters(), lr=self.hparams.lr)
@@ -121,11 +111,11 @@ class MtgVaeSystem(BaseLightningModule):
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
-        recon, posterior, prior = self.model.forward_train(batch)
+        recon, z, posterior, prior = self.model.forward_train(batch)
         # compute recon loss
         loss_recon = self.hparams.alpha * self._loss(recon, batch, reduction='mean')
         # compute kl divergence
-        loss_kl = self.hparams.beta * torch.distributions.kl_divergence(posterior, prior).mean()
+        loss_kl = self.hparams.beta * kl_loss(posterior, prior, reduction='mean')
         # combined loss
         loss = loss_recon + loss_kl
         # return loss
