@@ -1,5 +1,6 @@
 import logging
 import os
+import warnings
 from contextlib import contextmanager
 from datetime import datetime
 from functools import lru_cache
@@ -23,6 +24,28 @@ from mtgdata.util import Hdf5Dataset
 
 
 logger = logging.getLogger(__name__)
+
+
+# ========================================================================= #
+# Transform                                                                 #
+# ========================================================================= #
+
+
+def seed(seed):
+    if seed is None:
+        warnings.warn('No random seed set!')
+        return
+    # import components
+    import random
+    import numpy as np
+    import torch
+    # seed everything
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    print('[seeded]:', seed)
 
 
 # ========================================================================= #
@@ -82,6 +105,31 @@ class BaseLightningModule(pl.LightningModule):
         return tqdm_dict
 
 
+def normalize_image_obs(obs) -> torch.Tensor:
+    # get batch from datasets with labels
+    if not isinstance(obs, torch.Tensor):
+        obs = obs[0]
+    # add missing channel
+    if obs.ndim == 2:
+        obs = obs[None, :, :]
+    # check
+    assert isinstance(obs, torch.Tensor)
+    assert obs.ndim == 3
+    return obs
+
+
+def normalize_image_batch(batch) -> torch.Tensor:
+        # get batch from datasets with labels
+        if not isinstance(batch, torch.Tensor):
+            batch = batch[0]
+        # add missing channel
+        if batch.ndim == 3:
+            batch = batch[:, None, :, :]
+        # check
+        assert isinstance(batch, torch.Tensor)
+        assert batch.ndim == 4
+        return batch
+
 # ========================================================================= #
 # Visualise                                                                 #
 # ========================================================================= #
@@ -136,6 +184,12 @@ class VisualiseCallback(pl.Callback):
             rs = torch.moveaxis(torch.clip(rs * 255, 0, 255).to(torch.uint8), 1, -1).detach().cpu().numpy()
             # make grid
             img = make_image_grid(np.concatenate([xs, rs]) if self._input_batch_is_images else rs, num_cols=len(xs), pad=4)
+            # add extra channels & check image size
+            if img.shape[-1] == 1:
+                img = np.dstack([img, img, img])
+            assert img.ndim == 3
+            assert img.shape[-1] == 3
+
         # plot
         if self._wandb:
             wandb.log({self._name: wandb.Image(img)})

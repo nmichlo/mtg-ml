@@ -303,13 +303,11 @@ class AutoEncoderSkips(BaseAutoEncoder):
         if weight_init is not None:
             init_model_weights(self, mode=weight_init)
 
-    @property
-    def _enc(self):
-        return self.__enc
+    def _enc(self, x):
+        return self.__enc(x)
 
-    @property
-    def _dec(self):
-        return self.__dec
+    def _dec(self, z):
+        return self.__dec(z)
 
 
 # ========================================================================= #

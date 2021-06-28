@@ -24,6 +24,8 @@
 
 from typing import Optional
 from typing import Sequence
+from typing import Tuple
+from typing import Union
 
 import numpy as np
 import torch
@@ -131,24 +133,24 @@ class BaseAutoEncoder(nn.Module):
         # this should return a tensor of shape (B, C, H, W)
         raise NotImplementedError
 
-    def make_prior(self, posterior: Normal):
+    def make_prior(self, posterior: Normal) -> Normal:
         return Normal(
             loc=torch.zeros_like(posterior.loc, requires_grad=False),
             scale=torch.ones_like(posterior.scale, requires_grad=False),
         )
 
-    def encode(self, x, return_prior=False):
+    def encode(self, x, return_prior=False) -> Union[Normal, Tuple[Normal, Normal]]:
         posterior = self._posterior_layer(self._enc(x))
         # return values
         if return_prior:
             return posterior, self.make_prior(posterior)
         return posterior
 
-    def decode(self, z):
+    def decode(self, z) -> torch.Tensor:
         x_recon = self._dec(z)
         return x_recon
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         assert not self.training, 'model not in evaluation mode'
         # deterministic forward if evaluating
         posterior = self.encode(x)
@@ -156,13 +158,13 @@ class BaseAutoEncoder(nn.Module):
         recon = self.decode(z)
         return recon
 
-    def forward_train(self, x):
+    def forward_train(self, x) -> Tuple[torch.Tensor, torch.Tensor, Normal, Normal]:
         assert self.training, 'model not in training mode'
         # stochastic forward if training
-        posterior = self.encode(x)
+        posterior, prior = self.encode(x, return_prior=True)
         z = posterior.rsample()
         recon = self.decode(z)
-        return recon, posterior, self.make_prior(posterior)
+        return recon, z, posterior, prior
 
 
 class AutoEncoder(BaseAutoEncoder):

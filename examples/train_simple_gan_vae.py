@@ -28,8 +28,8 @@ from torch.distributions import Normal
 from examples.common import BaseLightningModule
 from examples.common import count_params
 from examples.common import make_features
-from examples.nn.loss import LaplaceMseLoss
-from examples.nn.loss import MseLoss
+from examples.nn.loss import get_recon_loss
+from examples.nn.loss import kl_loss
 from examples.util.iter import is_last_iter
 from examples.util.iter import iter_pairs
 
@@ -310,12 +310,7 @@ class SimpleVaeGan(BaseLightningModule):
         # checks
         assert self.dtype in (torch.float32, torch.float16)
         # loss function
-        if self.hparams.ae_recon_loss == 'mse':
-            self._loss = MseLoss()
-        elif self.hparams.ae_recon_loss == 'mse_laplace':
-            self._loss = LaplaceMseLoss(freq_ratio=0.25)
-        else:
-            raise KeyError(f'invalid ae_recon_loss: {self.hparams.ae_recon_loss}')
+        self._loss = get_recon_loss(self.hparams.ae_recon_loss)
         # number of loss components
         self._loss_count = (1 if self.hparams.adversarial_sample else 0) + (1 if self.hparams.adversarial_recons else 0)
         assert self._loss_count > 0, 'both `adversarial_sample` and `adversarial_recons` cannot be False'
@@ -386,7 +381,8 @@ class SimpleVaeGan(BaseLightningModule):
             # get regularizer
             loss_reg = 0
             if self.sgan.is_vae:
-                loss_reg = self.hparams.beta * torch.distributions.kl_divergence(posterior, Normal(torch.zeros_like(posterior.loc), torch.ones_like(posterior.scale))).mean()
+                prior = Normal(torch.zeros_like(posterior.loc), torch.ones_like(posterior.scale))
+                loss_reg = self.hparams.beta * kl_loss(posterior, prior, reduction='mean')
             # compute final loss
             loss = loss_rec + loss_reg
             # return all values...

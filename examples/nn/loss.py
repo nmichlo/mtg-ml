@@ -6,6 +6,7 @@ from disent.nn.functional import get_kernel_size
 from disent.nn.functional import torch_conv2d_channel_wise
 from disent.nn.functional import torch_conv2d_channel_wise_fft
 from torch import nn
+from torch.distributions import Distribution
 from torch.nn import functional as F
 
 
@@ -27,6 +28,16 @@ def torch_laplace_kernel2d(size, sigma=1.0, normalise=True):
         # kernel /= torch.abs(kernel).sum()
     # return kernel
     return kernel[None, None, :, :]
+
+
+class BceLogitsLoss(nn.Module):
+    def forward(self, x, target, reduction='mean'):
+        return F.binary_cross_entropy_with_logits(x, target, reduction=reduction)
+
+
+class BceLoss(nn.Module):
+    def forward(self, x, target, reduction='mean'):
+        return F.binary_cross_entropy(x, target, reduction=reduction)
 
 
 class MseLoss(nn.Module):
@@ -91,6 +102,31 @@ class LaplaceMseLoss(nn.Module):
         loss_orig = F.mse_loss(x, target, reduction=reduction)
         loss_freq = F.mse_loss(x_conv, t_conv, reduction=reduction)
         return (1 - self._ratio) * loss_orig + self._ratio * loss_freq
+
+
+# ========================================================================= #
+# END                                                                       #
+# ========================================================================= #
+
+
+def get_recon_loss(loss: str):
+    # loss function
+    if loss == 'mse':                return MseLoss()
+    elif loss == 'bce':              return BceLoss()
+    elif loss == 'bce_logits':       return BceLogitsLoss()
+    elif loss == 'mse_laplace_0.25': return LaplaceMseLoss(freq_ratio=0.25)
+    elif loss == 'mse_laplace_0.5':  return LaplaceMseLoss()
+    elif loss == 'mse_spatial':      return SpatialFreqLoss()
+    else:                            raise KeyError(f'invalid reconstruction loss: {repr(loss)}')
+
+
+def kl_loss(posterior: Distribution, prior: Distribution, reduction: str = 'mean'):
+    kl = torch.distributions.kl_divergence(posterior, prior)
+    # reduce
+    if reduction == 'mean':   return kl.mean()
+    elif reduction == 'sum':  return kl.sum()
+    elif reduction == 'none': return kl
+    else:                     raise KeyError('invalid reduction mode')
 
 
 # ========================================================================= #

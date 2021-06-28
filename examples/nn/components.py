@@ -137,9 +137,9 @@ def SingleConv(in_channels: int, out_channels: int):
 
 
 class NormalDist(nn.Module):
-    def forward(self, x):
-        assert x.ndim == 2
-        mu, log_var = x.chunk(2, dim=1)
+    def forward(self, z):
+        assert z.ndim == 2, f'latent dimension was not flattened, could not instantiate posterior distribution with shape: {z.shape}'
+        mu, log_var = z.chunk(2, dim=1)
         return Normal(loc=mu, scale=torch.exp(0.5 * log_var))
 
 
