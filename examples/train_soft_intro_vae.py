@@ -17,12 +17,9 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from examples.common import BaseLightningModule
-from examples.common import make_mtg_datamodule
 from examples.common import make_mtg_trainer
 from examples.common import normalize_image_batch
 from examples.common import normalize_image_obs
-from examples.experiments.nn_weights import init_model_weights
-from examples.experiments.nn_weights import init_weights
 from examples.nn.loss import get_recon_loss
 from examples.nn.loss import kl_loss
 from examples.nn.model import BaseAutoEncoder
@@ -31,7 +28,6 @@ from examples.nn.model import BaseAutoEncoder
 # ========================================================================= #
 # Model                                                                     #
 # ========================================================================= #
-from examples.nn.model_alt import AutoEncoderSkips
 
 
 class ResidualBlock(nn.Module):
@@ -67,34 +63,37 @@ class ResidualBlock(nn.Module):
 
 
 class Encoder(nn.Module):
+    """
+    FROM: https://github.com/taldatech/soft-intro-vae-pytorch
+    """
 
-    def __init__(self, cdim=3, zdim=512, channels=(64, 128, 256, 512, 512, 512), image_size=256):
+    def __init__(self, img_size: int = 256, img_chn: int = 3, z_size: int = 512, conv_channels=(64, 128, 256, 512, 512, 512)):
         super(Encoder, self).__init__()
 
-        self.cdim = cdim
-        self.image_size = image_size
-        cc = channels[0]
+        self.img_chn = img_chn
+        self.img_size = img_size
+        cc = conv_channels[0]
 
         self.main = nn.Sequential(
-            nn.Conv2d(cdim, cc, 5, 1, 2, bias=False),
+            nn.Conv2d(img_chn, cc, 5, 1, 2, bias=False),
             nn.BatchNorm2d(cc),
             nn.LeakyReLU(0.2),
             nn.AvgPool2d(2),
         )
 
-        sz = image_size // 2
-        for ch in channels[1:]:
-            self.main.add_module('res_in_{}'.format(sz), ResidualBlock(cc, ch, scale=1.0))
-            self.main.add_module('down_to_{}'.format(sz // 2), nn.AvgPool2d(2))
+        sz = img_size // 2
+        for ch in conv_channels[1:]:
+            self.main.add_module(f'res_in_{sz}',     ResidualBlock(cc, ch, scale=1.0))
+            self.main.add_module(f'down_to_{sz//2}', nn.AvgPool2d(2))
             cc, sz = ch, sz // 2
-        self.main.add_module('res_in_{}'.format(sz), ResidualBlock(cc, cc, scale=1.0))
+        self.main.add_module(f'res_in_{sz}', ResidualBlock(cc, cc, scale=1.0))
 
         # compute input shape to fcn | feed forward data!
-        self.conv_output_size = self.main(torch.zeros(1, cdim, image_size, image_size)).shape[1:]
+        self.conv_output_size = self.main(torch.zeros(1, img_chn, img_size, img_size)).shape[1:]
         num_fc_features       = int(np.prod(self.conv_output_size))
 
         # final layer
-        self.fc = nn.Linear(num_fc_features, 2 * zdim)
+        self.fc = nn.Linear(num_fc_features, 2 * z_size)
 
     def forward(self, x):
         y = self.main(x).view(x.size(0), -1)
@@ -103,32 +102,34 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
+    """
+    FROM: https://github.com/taldatech/soft-intro-vae-pytorch
+    """
 
-    def __init__(self, cdim=3, zdim=512, channels=(64, 128, 256, 512, 512, 512), image_size=256, conv_input_size=None):
+    def __init__(self, conv_input_size, img_size=256, img_chn=3, z_size=512, conv_channels=(64, 128, 256, 512, 512, 512)):
         super(Decoder, self).__init__()
-        self.cdim = cdim
-        self.image_size = image_size
-        cc = channels[-1]
+        self.img_chn = img_chn
+        self.img_size = img_size
+        cc = conv_channels[-1]
 
         # TODO: I shouldn't have to pass this
-        assert conv_input_size is not None
         self.conv_input_size = conv_input_size
         num_fc_features = int(np.prod(conv_input_size))
 
         self.fc = nn.Sequential(
-            nn.Linear(zdim, num_fc_features),
+            nn.Linear(z_size, num_fc_features),
             nn.ReLU(True),
         )
 
         sz = 4
         self.main = nn.Sequential()
-        for ch in channels[::-1]:
-            self.main.add_module('res_in_{}'.format(sz), ResidualBlock(cc, ch, scale=1.0))
-            self.main.add_module('up_to_{}'.format(sz * 2), nn.Upsample(scale_factor=2, mode='nearest'))
+        for ch in conv_channels[::-1]:
+            self.main.add_module(f'res_in_{sz}',  ResidualBlock(cc, ch, scale=1.0))
+            self.main.add_module(f'up_to_{sz*2}', nn.Upsample(scale_factor=2, mode='nearest'))
             cc, sz = ch, sz * 2
 
-        self.main.add_module('res_in_{}'.format(sz), ResidualBlock(cc, cc, scale=1.0))
-        self.main.add_module('predict', nn.Conv2d(cc, cdim, 5, 1, 2))
+        self.main.add_module(f'res_in_{sz}', ResidualBlock(cc, cc, scale=1.0))
+        self.main.add_module('predict', nn.Conv2d(cc, img_chn, 5, 1, 2))
 
     def forward(self, z):
         z = z.view(z.size(0), -1)
@@ -145,11 +146,11 @@ class Decoder(nn.Module):
 
 class SoftIntroVae(BaseAutoEncoder):
 
-    def __init__(self, cdim=3, zdim=512, channels=(64, 128, 256, 512, 512, 512), image_size=256):
+    def __init__(self, img_size: int = 256, img_chn: int = 3, z_size: int = 512, conv_channels=(64, 128, 256, 512, 512, 512)):
         super(SoftIntroVae, self).__init__()
-        self.z_dim = zdim
-        self._encoder = Encoder(cdim, zdim, channels, image_size)
-        self._decoder = Decoder(cdim, zdim, channels, image_size, conv_input_size=self._encoder.conv_output_size)
+        self.z_size = z_size
+        self._encoder = Encoder(img_size=img_size, img_chn=img_chn, z_size=z_size, conv_channels=conv_channels)
+        self._decoder = Decoder(img_size=img_size, img_chn=img_chn, z_size=z_size, conv_channels=conv_channels, conv_input_size=self._encoder.conv_output_size)
 
     def _enc(self, x):
         return self._encoder(x)
@@ -168,9 +169,9 @@ _DATA_ROOT = 'data'
 
 @dataclasses.dataclass
 class DatasetSettings:
-    image_size: int
-    ch: int
-    channels: Tuple[int, ...]
+    img_size: int
+    img_chn: int
+    conv_channels: Tuple[int, ...]
     make_dataset: callable
 
 
@@ -186,15 +187,16 @@ def _get_celeba(image_size: int, train_size: int):
     return data
 
 
+# settings from https://github.com/taldatech/soft-intro-vae-pytorch
 _DATASET_SETTINGS = {
-    'cifar10':     DatasetSettings(image_size=32,   ch=3, channels=(64, 128, 256),                        make_dataset=lambda:     torchvision.datasets.CIFAR10(root=_DATA_ROOT, train=True,     download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
-    'celeb128':    DatasetSettings(image_size=128,  ch=3, channels=(64, 128, 256, 512, 512),              make_dataset=lambda: _get_celeba(1024, 162770)),
-    'celeb256':    DatasetSettings(image_size=256,  ch=3, channels=(64, 128, 256, 512, 512, 512),         make_dataset=lambda: _get_celeba(1024, 162770)),
-    'celeb1024':   DatasetSettings(image_size=1024, ch=3, channels=(16, 32, 64, 128, 256, 512, 512, 512), make_dataset=lambda: _get_celeba(1024, 29000)),
-  # 'monsters128': DatasetSettings(image_size=128,  ch=3, channels=(64, 128, 256, 512, 512),              make_dataset=lambda:            DigitalMonstersDataset(root_path=os.path.join(_DATA_ROOT, 'monsters'), output_height=128 , transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
-    'svhn':        DatasetSettings(image_size=32,   ch=3, channels=(64, 128, 256),                        make_dataset=lambda:         torchvision.datasets.SVHN(root=_DATA_ROOT, split='train', download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
-    'fmnist':      DatasetSettings(image_size=28,   ch=1, channels=(64, 128),                             make_dataset=lambda: torchvision.datasets.FashionMNIST(root=_DATA_ROOT, train=True,    download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
-    'mnist':       DatasetSettings(image_size=28,   ch=1, channels=(64, 128),                             make_dataset=lambda:        torchvision.datasets.MNIST(root=_DATA_ROOT, train=True,    download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
+    'cifar10':     DatasetSettings(img_size=32,   img_chn=3, conv_channels=(64, 128, 256),                        make_dataset=lambda:     torchvision.datasets.CIFAR10(root=_DATA_ROOT, train=True,     download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
+    'celeb128':    DatasetSettings(img_size=128,  img_chn=3, conv_channels=(64, 128, 256, 512, 512),              make_dataset=lambda: _get_celeba(1024, 162770)),
+    'celeb256':    DatasetSettings(img_size=256,  img_chn=3, conv_channels=(64, 128, 256, 512, 512, 512),         make_dataset=lambda: _get_celeba(1024, 162770)),
+    'celeb1024':   DatasetSettings(img_size=1024, img_chn=3, conv_channels=(16, 32, 64, 128, 256, 512, 512, 512), make_dataset=lambda: _get_celeba(1024, 29000)),
+  # 'monsters128': DatasetSettings(img_size=128,  img_chn=3, conv_channels=(64, 128, 256, 512, 512),              make_dataset=lambda:            DigitalMonstersDataset(root_path=os.path.join(_DATA_ROOT, 'monsters'), output_height=128 , transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
+    'svhn':        DatasetSettings(img_size=32,   img_chn=3, conv_channels=(64, 128, 256),                        make_dataset=lambda:         torchvision.datasets.SVHN(root=_DATA_ROOT, split='train', download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
+    'fmnist':      DatasetSettings(img_size=28,   img_chn=1, conv_channels=(64, 128),                             make_dataset=lambda: torchvision.datasets.FashionMNIST(root=_DATA_ROOT, train=True,    download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
+    'mnist':       DatasetSettings(img_size=28,   img_chn=1, conv_channels=(64, 128),                             make_dataset=lambda:        torchvision.datasets.MNIST(root=_DATA_ROOT, train=True,    download=True, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]))),
 }
 
 
@@ -213,7 +215,7 @@ class SoftIntroVaeSystem(BaseLightningModule):
         self,
         # model
             dataset: str,
-            z_dim: int = 128,
+            z_size: int = 128,
         # training
             lr_enc: float = 2e-4,
             lr_dec: float = 2e-4,
@@ -231,10 +233,15 @@ class SoftIntroVaeSystem(BaseLightningModule):
         self.save_hyperparameters()
         # initialise
         self.dataset_settings = get_dataset_settings(self.hparams.dataset)
-        self._scale = 1 / (self.dataset_settings.ch * self.dataset_settings.image_size**2)  # 1 / (C * H * W)
+        self._scale = 1 / (self.dataset_settings.img_chn * self.dataset_settings.img_size**2)  # 1 / (C * H * W)
         self._loss = get_recon_loss(self.hparams.recon_loss)
         # make model
-        self.model = SoftIntroVae(cdim=self.dataset_settings.ch, zdim=self.hparams.z_dim, channels=self.dataset_settings.channels, image_size=self.dataset_settings.image_size)
+        self.model = SoftIntroVae(
+            img_size=self.dataset_settings.img_size,
+            img_chn=self.dataset_settings.img_chn,
+            z_size=self.hparams.z_size,
+            conv_channels=self.dataset_settings.conv_channels,
+        )
 
     def configure_optimizers(self):
         optimizer_enc = optim.Adam(self.model._encoder.parameters(), lr=self.hparams.lr_enc)
@@ -252,7 +259,7 @@ class SoftIntroVaeSystem(BaseLightningModule):
 
         # ENCODER TRAINING STEP
         if optimizer_idx == 0:
-            recon_fake = self.model.decode(torch.randn(size=(len(batch), self.hparams.z_dim), device=self.device))
+            recon_fake = self.model.decode(self.sample_z(len(batch)))
 
             # feed forward
             rec_real, z_real, posterior_real, prior_real = self.model.forward_train(batch)
@@ -291,8 +298,8 @@ class SoftIntroVaeSystem(BaseLightningModule):
 
         # DECODER TRAINING STEP
         elif optimizer_idx == 1:
-            # this should originally be re-used from the previous step
-            recon_fake = self.model.decode(torch.randn(size=(len(batch), self.hparams.z_dim), device=self.device))
+            # this should originally be re-used from the previous step TODO: check which other values should also be reused?
+            recon_fake = self.model.decode(self.sample_z(len(batch)))
 
             # feed forward
             rec_real, z_real, posterior_real, prior_real = self.model.forward_train(batch, detach_z=True)
@@ -339,6 +346,9 @@ class SoftIntroVaeSystem(BaseLightningModule):
     def forward(self, x):
         return self.model(x)
 
+    def sample_z(self, batch_size: int):
+        return torch.randn(size=(batch_size, self.hparams.z_size), device=self.device)
+
     def _compute_fid(self, force=False):
         pass
         # if not self.hparams.training_measure_fid:
@@ -364,19 +374,19 @@ if __name__ == '__main__':
         beta_kl: float
         beta_rec: float
         beta_neg: float
-        z_dim: int
+        z_size: int
         batch_size: int
 
     _SETTINGS = {
-        'cifar10':     ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_dim=128, batch_size=32),
-        'celeb128':    ModelSettings(beta_kl=1.0, beta_rec=0.5, beta_neg=1024, z_dim=256, batch_size=8),  # TODO: this should be adjusted from 1024
-        'celeb256':    ModelSettings(beta_kl=1.0, beta_rec=0.5, beta_neg=1024, z_dim=256, batch_size=8),  # TODO: this should be adjusted from 1024
-        'celeb1024':   ModelSettings(beta_kl=1.0, beta_rec=0.5, beta_neg=1024, z_dim=256, batch_size=8),
-        'monsters128': ModelSettings(beta_kl=0.2, beta_rec=0.2, beta_neg=256,  z_dim=128, batch_size=16),
-        'svhn':        ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_dim=128, batch_size=32),
-        'fmnist':      ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_dim=32,  batch_size=128),
-        'mnist':       ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_dim=32,  batch_size=128),
-        'mtg':         ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=1024, z_dim=256, batch_size=32),  # verify settings
+        'cifar10':     ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_size=128, batch_size=32),
+        'celeb128':    ModelSettings(beta_kl=1.0, beta_rec=0.5, beta_neg=1024, z_size=256, batch_size=8),  # TODO: this should be adjusted from 1024
+        'celeb256':    ModelSettings(beta_kl=1.0, beta_rec=0.5, beta_neg=1024, z_size=256, batch_size=8),  # TODO: this should be adjusted from 1024
+        'celeb1024':   ModelSettings(beta_kl=1.0, beta_rec=0.5, beta_neg=1024, z_size=256, batch_size=8),
+        'monsters128': ModelSettings(beta_kl=0.2, beta_rec=0.2, beta_neg=256,  z_size=128, batch_size=16),
+        'svhn':        ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_size=128, batch_size=32),
+        'fmnist':      ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_size=32,  batch_size=128),
+        'mnist':       ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_size=32,  batch_size=128),
+        'mtg':         ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=1024, z_size=256, batch_size=32),  # verify settings
     }
 
     def main(dataset: str = 'mtg', wandb_enabled: bool = False):
@@ -388,7 +398,7 @@ if __name__ == '__main__':
             beta_kl=cfg.beta_kl,
             beta_rec=cfg.beta_rec,
             beta_neg=cfg.beta_neg,
-            z_dim=cfg.z_dim,
+            z_size=cfg.z_size,
             lr_dec=2e-4,
             lr_enc=2e-4,
         )
@@ -408,7 +418,7 @@ if __name__ == '__main__':
             checkpoint_monitor=None,
             # wandb settings
             wandb_project='soft-intro-vae',
-            wandb_name=f'{dataset}:{cfg.z_dim}',
+            wandb_name=f'{dataset}:{cfg.z_size}',
             wandb_enabled=wandb_enabled,
         )
 
