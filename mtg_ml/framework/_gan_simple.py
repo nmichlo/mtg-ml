@@ -12,9 +12,6 @@ import torch.nn.functional as F
 import torchvision
 from pytorch_lightning.core import LightningModule
 
-from mtg_ml.util.common import make_mtg_trainer
-from mtg_ml.util.common import make_mtg_datamodule
-
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +139,8 @@ class DCGAN(LightningModule):
         # sample noise
         z = self.sample_z(batch_size=batch.shape[0])
 
+        # TODO: add differentiable augments before discriminator?
+
         # improve the generator to fool the discriminator TODO: I don't think the discriminator should be updated here?
         if optimizer_idx == 0:
             loss_gen = self.adversarial_loss(self.discriminator(self.generator(z)), is_real=True)
@@ -160,8 +159,7 @@ class DCGAN(LightningModule):
 
     def adversarial_loss(self, y_logits, is_real: bool):
         # generate targets
-        gen_fn = (torch.ones if is_real else torch.zeros)
-        y_targ = gen_fn(len(y_logits), 1, device=self.device, dtype=y_logits.dtype)
+        y_targ = torch.full([len(y_logits), 1], fill_value=1 if is_real else 0, device=self.device, dtype=y_logits.dtype)
         # compute loss
         return F.binary_cross_entropy_with_logits(y_logits, y_targ)
 

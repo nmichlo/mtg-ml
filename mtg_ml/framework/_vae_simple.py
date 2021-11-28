@@ -22,19 +22,15 @@
 #  SOFTWARE.
 #  ~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~
 
-import logging
 from typing import Optional
 
-import torch
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from mtg_ml.model.model_alt import AutoEncoderSkips
+from mtg_ml.nn.model_alt import AutoEncoderSkips
 from mtg_ml.nn.loss import get_recon_loss
 from mtg_ml.nn.loss import kl_div
-from mtg_ml.util.common import MlSystem
-from mtg_ml.util.common import make_mtg_trainer
-from mtg_ml.util.common import make_mtg_datamodule
+from mtg_ml.util.ptl.sys import MlSystem
 
 
 # ========================================================================= #

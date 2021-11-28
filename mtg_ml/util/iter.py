@@ -1,6 +1,10 @@
-import time
 from collections import deque
 from typing import Sequence
+
+
+# ========================================================================= #
+# Iterators                                                                 #
+# ========================================================================= #
 
 
 def is_first_iter(items, n=1):
@@ -60,6 +64,11 @@ def iter_pairs(items, empty_error=False):
             break
 
 
+# ========================================================================= #
+# List Helpers                                                              #
+# ========================================================================= #
+
+
 def is_last_list(items: Sequence, n=1):
     items = list(items)
     # normalise the length
@@ -71,3 +80,8 @@ def is_last_list(items: Sequence, n=1):
 
 def is_first_list(items: Sequence, n=1):
     return list(is_first_iter(items, n=n))
+
+
+# ========================================================================= #
+# Transform                                                                 #
+# ========================================================================= #

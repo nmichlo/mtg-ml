@@ -1,0 +1,19 @@
+name: mtg64
+
+module_cls:
+  _target_: mtg_ml.util.ptl.Hdf5DataModule
+  h5_path: '/mnt/data/home/nathan/workspace/playground/mtg-dataset/data/mtg_default-cards-20211128100240_normal_65903x64x46x3_c4.h5'
+  h5_dataset_name: 'data'
+  batch_size: 32
+  val_ratio: 0.1
+  num_workers: 4
+  in_memory: FALSE
+  transform:
+    _target_: mtg_ml.util.transforms.ToStandardF32
+    size: NULL
+    mean: 0.5
+    std: 0.5
+    pad_to_square: TRUE
+
+meta:
+  x_shape: [3, 64, 64]

@@ -1,4 +1,6 @@
 import logging
+from typing import Optional
+from typing import Tuple
 
 import numpy as np
 import pytorch_lightning as pl
@@ -6,10 +8,15 @@ import torch
 from disent.util.visualize.vis_util import make_image_grid
 from pytorch_lightning.utilities import rank_zero_only
 
-from mtg_ml.util.common import evaluate_context
+from mtg_ml.util.pt import evaluate_context
 
 
 logger = logging.getLogger(__name__)
+
+
+# ========================================================================= #
+# Visualise                                                                 #
+# ========================================================================= #
 
 
 class VisualiseCallback(pl.Callback):
@@ -81,3 +88,44 @@ class VisualiseCallback(pl.Callback):
             logger.info('shown matplotlib model visualisation')
 
         # TODO: save grid to disk!
+
+
+# ========================================================================= #
+# Wandb Setup & Finish Callback                                             #
+# ========================================================================= #
+
+
+class WandbContextManagerCallback(pl.Callback):
+
+    def __init__(self, extra_entries: dict = None):
+        self._extra_entries = {} if (extra_entries is None) else extra_entries
+
+    @rank_zero_only
+    def on_train_start(self, trainer: 'pl.Trainer', pl_module: 'pl.LightningModule') -> None:
+        import wandb
+
+        # get initial keys and values
+        keys_values = {
+            **pl_module.hparams,
+        }
+        # get batch size from datamodule
+        if getattr(getattr(trainer, 'datamodule', None), 'batch_size', None):
+            keys_values['batch_size'] = trainer.datamodule.batch_size
+        # overwrite keys
+        keys_values.update(self._extra_entries)
+        wandb.config.update(keys_values, allow_val_change=True)
+
+        print()
+        for k, v in keys_values.items():
+            print(f'{k}: {repr(v)}')
+        print()
+
+    @rank_zero_only
+    def on_train_end(self, trainer: 'pl.Trainer', pl_module: 'pl.LightningModule') -> None:
+        import wandb
+        wandb.finish()
+
+
+# ========================================================================= #
+# END                                                                       #
+# ========================================================================= #

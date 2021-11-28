@@ -33,60 +33,6 @@ from torch.distributions import Normal
 
 
 # ========================================================================= #
-# Weights & Biases                                                          #
-# ========================================================================= #
-
-
-class BiasWeight(nn.Module):
-
-    def __init__(self, input_shape: Sequence[int]):
-        super().__init__()
-        self._bias = nn.Parameter(torch.zeros(*input_shape, dtype=torch.float32), requires_grad=True)
-        self._weight = nn.Parameter(torch.ones(*input_shape, dtype=torch.float32), requires_grad=True)
-
-    def forward(self, x):
-        return self._weight[None, ...] * x + self._bias[None, ...]
-
-
-class Weight(nn.Module):
-
-    def __init__(self, input_shape: Sequence[int]):
-        super().__init__()
-        self._weight = nn.Parameter(torch.ones(*input_shape, dtype=torch.float32), requires_grad=True)
-
-    def forward(self, x):
-        return self._weight[None, ...] * x
-
-
-class Bias(nn.Module):
-
-    def __init__(self, input_shape: Sequence[int]):
-        super().__init__()
-        self._bias = nn.Parameter(torch.zeros(*input_shape, dtype=torch.float32), requires_grad=True)
-
-    def forward(self, x):
-        return x + self._bias[None, ...]
-
-
-# ========================================================================= #
-# Debug                                                                     #
-# ========================================================================= #
-
-
-class PrintLayer(nn.Module):
-    def __init__(self, name=None):
-        super().__init__()
-        self.name = name
-
-    def forward(self, x):
-        if self.name is None:
-            print(x.shape)
-        else:
-            print(self.name, x.shape)
-        return x
-
-
-# ========================================================================= #
 # Activations                                                               #
 # ========================================================================= #
 
@@ -103,7 +49,7 @@ def Activation(shape_or_features: Optional[Union[Sequence[int], int]] = None, ac
         # get norm layers
         if norm == 'instance':    layers.append(nn.InstanceNorm2d(num_features=C, momentum=0.05))
         elif norm == 'batch':     layers.append(nn.BatchNorm2d(num_features=C,    momentum=0.05))
-        elif norm == 'layer_hw': layers.append(nn.LayerNorm(normalized_shape=[H, W]))
+        elif norm == 'layer_hw':  layers.append(nn.LayerNorm(normalized_shape=[H, W]))
         elif norm == 'layer_chw': layers.append(nn.LayerNorm(normalized_shape=[C, H, W]))
         else:                     raise KeyError(f'invalid norm mode: {norm}')
     # make activation
@@ -111,20 +57,11 @@ def Activation(shape_or_features: Optional[Union[Sequence[int], int]] = None, ac
         if activation == 'swish':        layers.append(Swish())
         elif activation == 'leaky_relu': layers.append(nn.LeakyReLU(inplace=True))
         elif activation == 'relu':       layers.append(nn.ReLU(inplace=True))
-        elif activation == 'relu66':     layers.append(nn.ReLU(inplace=True))
+        elif activation == 'relu6':      layers.append(nn.ReLU6(inplace=True))
         else:                            raise KeyError(f'invalid activation mode: {activation}')
     # return model
     if layers: return nn.Sequential(*layers)
     else:      return nn.Identity()
-
-
-# ========================================================================= #
-# Conv                                                                      #
-# ========================================================================= #
-
-
-def SingleConv(in_channels: int, out_channels: int):
-    return nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)
 
 
 # ========================================================================= #

@@ -27,10 +27,8 @@ from torch.distributions import Normal
 
 from mtg_ml.nn.loss import get_recon_loss
 from mtg_ml.nn.loss import kl_div
-from mtg_ml.util.common import MlSystem
-from mtg_ml.util.common import count_params
-from mtg_ml.util.common import make_mtg_trainer
-from mtg_ml.util.common import make_mtg_datamodule
+from mtg_ml.util.ptl.sys import MlSystem
+from mtg_ml.util.pt.module import count_params
 from mtg_ml.util.iter import is_last_iter
 from mtg_ml.util.iter import iter_pairs
 

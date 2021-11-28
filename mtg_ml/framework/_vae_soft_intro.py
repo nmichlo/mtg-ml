@@ -15,10 +15,10 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from mtg_ml import DATASET_ROOT
-from mtg_ml.model.model import BaseGaussianVaeModel
+from mtg_ml.nn.model import BaseGaussianVaeModel
 from mtg_ml.nn.loss import get_recon_loss
 from mtg_ml.nn.loss import kl_div
-from mtg_ml.util.common import MlSystem
+from mtg_ml.util.ptl.sys import MlSystem
 from mtg_ml.util.common import get_image_batch
 
 

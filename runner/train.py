@@ -5,52 +5,10 @@ from typing import Optional
 from typing import Tuple
 
 import hydra
+from torchvision.transforms import Compose
 
-from mtg_ml.util.common import Hdf5DataModule
 
-
-def make_mtg_datamodule(
-    h5_path: str,
-    # load everything
-    batch_size: int = 32,
-    num_workers: int = os.cpu_count(),
-    val_ratio: float = 0,
-    # convert options
-    # load_path: str = None,
-    # data_root: Optional[str] = None,
-    # convert_kwargs: Dict[str, Any] = None,
-    # extra data_loader transform
-    to_tensor=True,
-    transform=None,
-    mean_std: Optional[Tuple[float, float]] = None,
-    # memory
-    in_memory=False,
-):
-    # from mtgdata.scryfall_convert import generate_converted_dataset
-
-    # generate training set
-    # if load_path is None:
-    #     if convert_kwargs is None:
-    #         convert_kwargs = {}
-    #     h5_path, meta_path = generate_converted_dataset(save_root=data_root, data_root=data_root, **convert_kwargs)
-    # else:
-    #     assert not convert_kwargs, '`convert_kwargs` cannot be set if `data_path` is specified'
-    #     assert not data_root, '`data_root` cannot be set if `data_path` is specified'
-    #     h5_path = load_path
-
-    # get transform
-
-    return Hdf5DataModule(
-        h5_path,
-        batch_size=batch_size,
-        val_ratio=val_ratio,
-        num_workers=num_workers,
-        to_tensor=to_tensor,
-        mean_std=mean_std,
-        transform=transform,
-        in_memory=in_memory,
-    )
-
+Compose()
 
 def make_mtg_trainer(
     # training

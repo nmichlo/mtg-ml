@@ -1,0 +1,9 @@
+
+system_cls:
+  _target_: mtg_ml.framework.DCGAN
+  latent_dim: 128
+  lr: 0.0002
+  b1: 0.5
+  b2: 0.999
+  obs_shape: ${data.meta.x_shape}
+  final_activation: 'tanh'

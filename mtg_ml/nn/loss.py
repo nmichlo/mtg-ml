@@ -48,24 +48,32 @@ class SpatialFreqLoss(nn.Module):
     """
     Modified from:
     https://arxiv.org/pdf/1806.02336.pdf
+
+    TODO: move this into disent
     """
 
     def __init__(self, sigmas=(0.8, 1.6, 3.2), truncate=3, fft=True):
         super().__init__()
+        # check sigma values
         assert len(sigmas) > 0
-        self._kernels = nn.ParameterList([
-            nn.Parameter(torch_laplace_kernel2d(get_kernel_size(sigma=sigma, truncate=truncate), sigma=sigma, normalise=True), requires_grad=False)
-            for sigma in sigmas
-        ])
-        print([k.shape for k in self._kernels])
-        self._n = len(self._kernels)
+        self._sigmas = tuple(sigmas)
+        self._n = len(self._sigmas)
+        # create the list of kernels
+        for i, sigma in enumerate(self._sigmas):
+            kernel = torch_laplace_kernel2d(get_kernel_size(sigma=sigma, truncate=truncate), sigma=sigma, normalise=True)
+            self.register_buffer(f'kernel_{i}', kernel)
+        # get the convolution function
         self._conv_fn = torch_conv2d_channel_wise_fft if fft else torch_conv2d_channel_wise
 
     def forward(self, x, target, reduction='mean'):
+        # compute normal MSE loss
         loss_orig = F.mse_loss(x, target, reduction=reduction)
+        # compute all augmented MSE losses
         loss_freq = 0
-        for kernel in self._kernels:
+        for i in range(self._n):
+            kernel = self.get_buffer(f'kernel_{i}')
             loss_freq += F.mse_loss(self._conv_fn(x, kernel), self._conv_fn(target, kernel), reduction=reduction)
+        # Add values together and average
         return (loss_orig + loss_freq) / (self._n + 1)
 
 
@@ -73,33 +81,31 @@ class LaplaceMseLoss(nn.Module):
     """
     Modified from:
     https://arxiv.org/pdf/1806.02336.pdf
+
+    # TODO: move this into disent
     """
 
-    def __init__(self, freq_ratio=0.5, lazy_init=False):
+    def __init__(self, freq_ratio=0.5):
         super().__init__()
         self._ratio = freq_ratio
         self._kernel = None
-        # if we want to switch the loss during training, or on an existing model, these params wont exist!
-        if not lazy_init:
-            self._init_kernel()
-
-    def _init_kernel(self, device=None):
-        if self._kernel is None:
-            self._kernel = nn.Parameter(torch.as_tensor([
-                [0,  1,  0],
-                [1, -4,  1],
-                [0,  1,  0],
-            ], dtype=torch.float32, device=device), requires_grad=False)
-            self.register_parameter('_kernel', self._kernel)
+        # create kernel
+        kernel = torch.as_tensor([
+            [0,  1,  0],
+            [1, -4,  1],
+            [0,  1,  0],
+        ], dtype=torch.float32)
+        # register kernel
+        self.register_buffer('_kernel', kernel)
 
     def forward(self, x, target, reduction='mean'):
-        # create
-        self._init_kernel(x.device)
-        # convolve
+        # compute normal MSE loss
+        loss_orig = F.mse_loss(x, target, reduction=reduction)
+        # compute augmented MSE losses
         x_conv = torch_conv2d_channel_wise(x, self._kernel)
         t_conv = torch_conv2d_channel_wise(target, self._kernel)
-        loss_orig = F.mse_loss(x, target, reduction=reduction)
         loss_freq = F.mse_loss(x_conv, t_conv, reduction=reduction)
+        # Add values together and average
         return (1 - self._ratio) * loss_orig + self._ratio * loss_freq
 
 
@@ -114,7 +120,7 @@ def get_recon_loss(loss: str):
     elif loss == 'bce':              return BceLoss()
     elif loss == 'bce_logits':       return BceLogitsLoss()
     elif loss == 'mse_laplace_0.25': return LaplaceMseLoss(freq_ratio=0.25)
-    elif loss == 'mse_laplace_0.5':  return LaplaceMseLoss()
+    elif loss == 'mse_laplace_0.5':  return LaplaceMseLoss(freq_ratio=0.5)
     elif loss == 'mse_spatial':      return SpatialFreqLoss()
     else:                            raise KeyError(f'invalid reconstruction loss: {repr(loss)}')
 

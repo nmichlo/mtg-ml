@@ -31,9 +31,9 @@ import torch.nn as nn
 from disent.nn.weights import init_model_weights
 
 from mtg_ml.nn.components import Activation
-from mtg_ml.model.model import BaseGaussianVaeModel
-from mtg_ml.model.model import ReprDown
-from mtg_ml.model.model import ReprUp
+from mtg_ml.nn.model import BaseGaussianVaeModel
+from mtg_ml.nn.model import ReprDown
+from mtg_ml.nn.model import ReprUp
 
 
 # ========================================================================= #
