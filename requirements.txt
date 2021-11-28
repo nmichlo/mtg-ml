@@ -8,4 +8,4 @@ pytorch-lightning==1.5.3
 
 h5py==3.6.0
 
-disent==0.3.2
+disent==0.3.3

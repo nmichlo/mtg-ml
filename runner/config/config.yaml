@@ -1,0 +1,11 @@
+defaults:
+  - data: mtg64
+  - framework: dcgan
+
+settings:
+  job:
+    seed: 777
+
+trainer: {}
+#  max_steps: 1000
+#  max_epochs: 1000
