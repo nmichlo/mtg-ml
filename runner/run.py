@@ -42,30 +42,26 @@ def action_train(cfg: DictConfig):
     logger.info(f"Current working directory : {os.getcwd()}")
     logger.info(f"Orig working directory    : {hydra.utils.get_original_cwd()}")
 
+    # print config sections
+    logger.info(f'Final Config:\n\n{make_box_str(OmegaConf.to_yaml(cfg))}')
+
     # HYDRA MODULES
     datamodule = hydra.utils.instantiate(cfg.data.module_cls, _recursive_=False)
     framework = hydra.utils.instantiate(cfg.framework.system_cls)
-
-    # Setup Trainer
-    trainer = pl.Trainer(
-        **cfg.trainer,
-    )
 
     # -~-~-~-~-~-~-~-~-~-~-~-~- #
     # BEGIN TRAINING
     # -~-~-~-~-~-~-~-~-~-~-~-~- #
 
-    # print config sections
-    logger.info(f'Final Config:\n\n{make_box_str(OmegaConf.to_yaml(cfg))}')
-
     # save hparams TODO: is this a pytorch lightning bug? The trainer should automatically save these if hparams is set?
-    framework.hparams.update(cfg)
-    if trainer.logger:
-        trainer.logger.log_hyperparams(framework.hparams)
+    # framework.hparams.update(cfg)
+    # if trainer.logger:
+    #     trainer.logger.log_hyperparams(framework.hparams)
+
+    # Setup Trainer
+    trainer = pl.Trainer(**cfg.trainer)
 
     # fit the model
-    # -- if an error/signal occurs while pytorch lightning is
-    #    initialising the training process we cannot capture it!
     trainer.fit(framework, datamodule)
 
     # -~-~-~-~-~-~-~-~-~-~-~-~- #

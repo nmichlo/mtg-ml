@@ -1,3 +1,4 @@
+name: dcgan
 
 system_cls:
   _target_: mtg_ml.framework.DCGAN

@@ -12,6 +12,8 @@ import torch.nn.functional as F
 import torchvision
 from pytorch_lightning.core import LightningModule
 
+from mtg_ml.util.ptl import MlSystem
+
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +111,7 @@ class Discriminator(nn.Module):
 # ========================================================================= #
 
 
-class DCGAN(LightningModule):
+class DCGAN(MlSystem):
 
     def __init__(
         self,

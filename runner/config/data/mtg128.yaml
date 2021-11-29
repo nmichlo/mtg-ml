@@ -2,7 +2,7 @@ name: mtg64
 
 module_cls:
   _target_: mtg_ml.util.ptl.Hdf5DataModule
-  h5_path: '${oc.env:HOME}/workspace/playground/mtg-dataset/data/mtg_default-cards-20211128100240_normal_65903x64x46x3_c4.h5'
+  h5_path: '${oc.env:HOME}/workspace/playground/mtg-dataset/data/mtg_default-cards-20211128100240_normal_65903x128x92x3_c4.h5'
   h5_dataset_name: 'data'
   batch_size: ${settings.data.batch_size}
   val_ratio: 0.1
@@ -16,6 +16,6 @@ module_cls:
     pad_to_square: TRUE
 
 meta:
-  x_shape: [3, 64, 64]
-  img_size: 64
+  x_shape: [3, 128, 128]
+  img_size: 128
   img_chn: 3

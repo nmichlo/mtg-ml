@@ -30,7 +30,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from mtg_ml.nn.model_alt import AutoEncoderSkips
 from mtg_ml.nn.loss import get_recon_loss
 from mtg_ml.nn.loss import kl_div
-from mtg_ml.util.ptl.sys import MlSystem
+from mtg_ml.util.ptl import MlSystem
 
 
 # ========================================================================= #

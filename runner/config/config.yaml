@@ -1,11 +1,15 @@
 defaults:
   - data: mtg64
-  - framework: dcgan
+  - framework: sivae
 
 settings:
   job:
     seed: 777
+  data:
+    batch_size: 32
 
-trainer: {}
-#  max_steps: 1000
-#  max_epochs: 1000
+trainer:
+  gpus: 0  # why does this crash?
+  # strategy: ddp  # careful, can cause dead processes
+  max_steps: 1000
+  max_epochs: 1000

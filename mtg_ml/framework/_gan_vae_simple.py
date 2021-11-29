@@ -27,10 +27,10 @@ from torch.distributions import Normal
 
 from mtg_ml.nn.loss import get_recon_loss
 from mtg_ml.nn.loss import kl_div
-from mtg_ml.util.ptl.sys import MlSystem
-from mtg_ml.util.pt.module import count_params
 from mtg_ml.util.iter import is_last_iter
 from mtg_ml.util.iter import iter_pairs
+from mtg_ml.util.pt import count_params
+from mtg_ml.util.ptl import MlSystem
 
 
 logger = logging.getLogger(__name__)
