@@ -1,78 +1,71 @@
-
 import logging
 import os
+from contextlib import contextmanager
 from datetime import datetime
 
-import pytorch_lightning as pl
 import hydra
-import wandb
-from disent.util.seeds import seed
-from disent.util.strings.fmt import make_box_str
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
+
+# avoid importing torch here
 
 
 logger = logging.getLogger(__name__)
 
 
-def action_train(cfg: DictConfig):
+# ========================================================================= #
+# HELPER                                                                    #
+# ========================================================================= #
 
-    # get the time the run started
-    time_string = datetime.today().strftime('%Y-%m-%d--%H-%M-%S')
-    logger.info(f'Starting run at time: {time_string}')
 
-    # -~-~-~-~-~-~-~-~-~-~-~-~- #
-
+@contextmanager
+def wandb_cleanup():
     # cleanup from old runs:
     try:
+        import wandb
+        wandb.finish()
+    except:
+        pass
+    # wrap function
+    yield
+    # cleanup this run
+    try:
+        import wandb
         wandb.finish()
     except:
         pass
 
-    # -~-~-~-~-~-~-~-~-~-~-~-~- #
 
-    # deterministic seed
-    seed(cfg.settings.job.seed)
+# ========================================================================= #
+# ACTION                                                                    #
+# ========================================================================= #
 
-    # -~-~-~-~-~-~-~-~-~-~-~-~- #
-    # INITIALISE & SETDEFAULT IN CONFIG
-    # -~-~-~-~-~-~-~-~-~-~-~-~- #
 
+@wandb_cleanup()
+def action_train(cfg: DictConfig):
+    # import torch here
+    from disent.util.seeds import seed
+    from disent.util.strings.fmt import make_box_str
+
+    # get the time the run started
+    time_string = datetime.today().strftime('%Y-%m-%d--%H-%M-%S')
+    logger.info(f'Starting run at time: {time_string}')
     # print useful info
     logger.info(f"Current working directory : {os.getcwd()}")
     logger.info(f"Orig working directory    : {hydra.utils.get_original_cwd()}")
-
     # print config sections
-    logger.info(f'Final Config:\n\n{make_box_str(OmegaConf.to_yaml(cfg))}')
+    logger.info(f'Config:\n{make_box_str(OmegaConf.to_yaml(cfg))}')
+
+    # SEED
+    seed(cfg.settings.job.seed)
 
     # HYDRA MODULES
     datamodule = hydra.utils.instantiate(cfg.data.module_cls, _recursive_=False)
     framework = hydra.utils.instantiate(cfg.framework.system_cls)
 
-    # -~-~-~-~-~-~-~-~-~-~-~-~- #
-    # BEGIN TRAINING
-    # -~-~-~-~-~-~-~-~-~-~-~-~- #
-
-    # save hparams TODO: is this a pytorch lightning bug? The trainer should automatically save these if hparams is set?
-    # framework.hparams.update(cfg)
-    # if trainer.logger:
-    #     trainer.logger.log_hyperparams(framework.hparams)
-
-    # Setup Trainer
-    trainer = pl.Trainer(**cfg.trainer)
-
-    # fit the model
+    # TRAIN
+    trainer = hydra.utils.instantiate(cfg.trainer)
     trainer.fit(framework, datamodule)
-
-    # -~-~-~-~-~-~-~-~-~-~-~-~- #
-
-    # cleanup this run
-    try:
-        wandb.finish()
-    except:
-        pass
-
-    # -~-~-~-~-~-~-~-~-~-~-~-~- #
 
 
 # ========================================================================= #
@@ -87,7 +80,6 @@ CONFIG_NAME = 'config'
 
 
 if __name__ == '__main__':
-
     # register a custom OmegaConf resolver that allows us to put in a ${exit:msg} that exits the program
     # - if we don't register this, the program will still fail because we have an unknown
     #   resolver. This just prettifies the output.
@@ -95,7 +87,11 @@ if __name__ == '__main__':
         pass
     def _error_resolver(msg: str):
         raise ConfigurationError(msg)
+    def _exp_num_resolver(path: str):
+        from mtg_ml.util.path import get_next_experiment_number
+        return get_next_experiment_number(path)
     OmegaConf.register_new_resolver('exit', _error_resolver)
+    OmegaConf.register_new_resolver('next_num', _exp_num_resolver)
 
     # main function
     @hydra.main(config_path=CONFIG_PATH, config_name=CONFIG_NAME)

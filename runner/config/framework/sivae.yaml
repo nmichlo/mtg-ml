@@ -3,7 +3,7 @@ name: sivae
 system_cls:
   _target_: mtg_ml.framework.SoftIntroVaeSystem
   # model
-  z_size: 128
+  z_size: 256
   # training
   lr_enc: 2e-4
   lr_dec: 2e-4

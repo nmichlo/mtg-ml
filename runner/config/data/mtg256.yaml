@@ -11,11 +11,13 @@ module_cls:
   transform:
     _target_: mtg_ml.util.transforms.ToStandardF32
     size: NULL
-    mean: 0.5
-    std: 0.5
+    mean: ${data.meta.img_mean}
+    std: ${data.meta.img_std}
     pad_to_square: TRUE
 
 meta:
   x_shape: [3, 256, 256]
   img_size: 256
   img_chn: 3
+  img_mean: 0.5
+  img_std: 0.5
