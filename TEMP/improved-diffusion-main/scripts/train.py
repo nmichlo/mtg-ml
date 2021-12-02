@@ -3,43 +3,8 @@ import os.path
 import hydra
 import pytorch_lightning as pl
 import torch
-import torch.nn.functional as F
 
-from improved_diffusion.image_datasets import load_data
 from mtg_ml.util.func import instantiate_required
-
-
-class ImDataModule(pl.LightningDataModule):
-
-    test_dataloader = None
-    val_dataloader = None
-    predict_dataloader = None
-
-    def __init__(self):
-        super().__init__()
-        self._data = load_data(
-            data_dir=cfg.data_dir,
-            batch_size=cfg.batch_size,
-            image_size=cfg.image_size,
-            class_cond=cfg.class_cond,
-        )
-
-    def train_dataloader(self):
-        pass
-
-
-class SrDataModule(ImDataModule):
-
-    def __init__(self):
-        super().__init__()
-        self._data = load_superres_data(
-            data_dir=cfg.data_dir,
-            batch_size=cfg.batch_size,
-            large_size=cfg.image_size,
-            small_size=cfg.small_size,
-            class_cond=cfg.class_cond,
-        )
-
 
 
 def run_training(cfg):
@@ -55,17 +20,6 @@ def run_training(cfg):
     # train
     trainer.fit(system, datamodule)
 
-
-def load_superres_data(data_dir, batch_size, large_size, small_size, class_cond=False):
-    data = load_data(
-        data_dir=data_dir,
-        batch_size=batch_size,
-        image_size=large_size,
-        class_cond=class_cond,
-    )
-    for large_batch, model_kwargs in data:
-        model_kwargs["low_res"] = F.interpolate(large_batch, small_size, mode="area")
-        yield large_batch, model_kwargs
 
 
 # @dataclass

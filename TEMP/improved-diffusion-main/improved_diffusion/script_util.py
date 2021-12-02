@@ -1,5 +1,5 @@
-import argparse
 from dataclasses import dataclass
+from typing import Optional
 from typing import Tuple
 from typing import Union
 
@@ -8,8 +8,10 @@ from . import gaussian_diffusion as gd
 from .gaussian_diffusion import GaussianDiffusion
 from .resample import create_named_schedule_sampler
 from .resample import ScheduleSampler
-from .respace import SpacedDiffusion, space_timesteps
-from .unet import SuperResModel, UNetModel
+from .respace import space_timesteps
+from .respace import SpacedDiffusion
+from .unet import SuperResModel
+from .unet import UNetModel
 
 
 NUM_CLASSES = 1000
@@ -25,22 +27,29 @@ class _ModelCfg(Cfg):
     num_res_blocks: int = 2
     num_heads: int = 4
     num_heads_upsample: int = -1
+    channel_mult: Tuple[int, ...] = (1, 2, 3, 4)  # {256: (1, 1, 2, 2, 4, 4), 64: (1, 2, 3, 4), 32: (1, 2, 2, 2)}[image_size]
     attention_resolutions: str = "16,8"
     dropout: float = 0.0
-    class_cond: bool = False
+    num_classes: Optional[int] = None  # NUM_CLASSES=1000
     use_checkpoint: bool = False
     use_scale_shift_norm: bool = True
+    # not part of config
+    _model_cls_ = None
 
 
 @dataclass
 class ImageModelCfg(_ModelCfg):
-    pass
+    # not part of config
+    _model_cls_ = UNetModel
 
 
 @dataclass
 class SrModelCfg(_ModelCfg):
     image_size: int = 256  # was: large_size
     small_size: int = 64
+    channel_mult: Tuple[int, ...] = (1, 1, 2, 2, 4, 4)  # {256: (1, 1, 2, 2, 4, 4), 64: (1, 2, 3, 4), 32: (1, 2, 2, 2)}[image_size]
+    # not part of config
+    _model_cls_ = SuperResModel
 
 
 @dataclass
@@ -60,43 +69,16 @@ class DiffusionAndSampleCfg(Cfg):
     schedule_sampler: str = "uniform"
 
 
-_DEFAULT_CHANNELS = {
-    256: (1, 1, 2, 2, 4, 4),
-    64: (1, 2, 3, 4),
-    32: (1, 2, 2, 2),
-}
-
-
-def _get_channels(image_size: int):
-    if image_size not in _DEFAULT_CHANNELS:
-        raise ValueError(f"unsupported image size: {image_size}")
-    return _DEFAULT_CHANNELS[image_size]
-
-
 def create_model(cfg: Union[ImageModelCfg, SrModelCfg]):
-    # checks
-    if isinstance(cfg, SrModelCfg):
-        model_cls = SuperResModel
-    elif isinstance(cfg, ImageModelCfg):
-        model_cls = UNetModel
-    else:
-        raise TypeError(f'cfg must be of type {ImageModelCfg.__name__} or {SrModelCfg.__name__}, got: {type(cfg)}')
-
-    channel_mult = _get_channels(image_size=cfg.image_size)
-
-    attention_ds = []
-    for res in cfg.attention_resolutions.split(","):
-        attention_ds.append(cfg.image_size // int(res))
-
-    return model_cls(
+    return cfg._model_cls_(
         in_channels=3,
         model_channels=cfg.num_channels,
         out_channels=(3 if not cfg.learn_sigma else 6),
         num_res_blocks=cfg.num_res_blocks,
-        attention_resolutions=tuple(attention_ds),
+        attention_resolutions=[cfg.image_size // int(res) for res in cfg.attention_resolutions.split(",")],
         dropout=cfg.dropout,
-        channel_mult=channel_mult,
-        num_classes=(NUM_CLASSES if cfg.class_cond else None),
+        channel_mult=cfg.channel_mult,
+        num_classes=cfg.num_classes,
         use_checkpoint=cfg.use_checkpoint,
         num_heads=cfg.num_heads,
         num_heads_upsample=cfg.num_heads_upsample,
@@ -133,27 +115,3 @@ def create_diffusion_and_sampler(cfg: DiffusionAndSampleCfg) -> Tuple[GaussianDi
     )
 
     return diffusion, sampler
-
-
-def add_dict_to_argparser(parser, default_dict):
-    for k, v in default_dict.items():
-        v_type = type(v)
-        if v is None:
-            v_type = str
-        elif isinstance(v, bool):
-            v_type = str2bool
-        parser.add_argument(f"--{k}", default=v, type=v_type)
-
-
-def str2bool(v):
-    """
-    https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
-    """
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ("yes", "true", "t", "y", "1"):
-        return True
-    elif v.lower() in ("no", "false", "f", "n", "0"):
-        return False
-    else:
-        raise argparse.ArgumentTypeError("boolean value expected")

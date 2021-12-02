@@ -1,6 +1,8 @@
 from abc import abstractmethod
 
 import math
+from typing import Optional
+from typing import Tuple
 
 import numpy as np
 import torch as th
@@ -299,20 +301,20 @@ class UNetModel(nn.Module):
 
     def __init__(
         self,
-        in_channels,
-        model_channels,
-        out_channels,
-        num_res_blocks,
-        attention_resolutions,
-        dropout=0,
-        channel_mult=(1, 2, 4, 8),
-        conv_resample=True,
-        dims=2,
-        num_classes=None,
-        use_checkpoint=False,
-        num_heads=1,
-        num_heads_upsample=-1,
-        use_scale_shift_norm=False,
+        in_channels: int,
+        model_channels: int,
+        out_channels: int,
+        num_res_blocks: int,
+        attention_resolutions: Tuple[int, ...],
+        dropout: float = 0,
+        channel_mult: Tuple[int, ...] = (1, 2, 4, 8),
+        conv_resample: bool = True,
+        dims: int = 2,
+        num_classes: Optional[int] = None,
+        use_checkpoint: bool = False,
+        num_heads: int = 1,
+        num_heads_upsample: int = -1,
+        use_scale_shift_norm: bool = False,
     ):
         super().__init__()
 
@@ -323,9 +325,9 @@ class UNetModel(nn.Module):
         self.model_channels = model_channels
         self.out_channels = out_channels
         self.num_res_blocks = num_res_blocks
-        self.attention_resolutions = attention_resolutions
+        self.attention_resolutions = tuple(attention_resolutions)
         self.dropout = dropout
-        self.channel_mult = channel_mult
+        self.channel_mult = tuple(channel_mult)
         self.conv_resample = conv_resample
         self.num_classes = num_classes
         self.use_checkpoint = use_checkpoint
@@ -513,8 +515,8 @@ class SuperResModel(UNetModel):
     Expects an extra kwarg `low_res` to condition on a low-resolution image.
     """
 
-    def __init__(self, in_channels, *args, **kwargs):
-        super().__init__(in_channels * 2, *args, **kwargs)
+    def __init__(self, in_channels: int, **kwargs):
+        super().__init__(in_channels=in_channels * 2, **kwargs)
 
     def forward(self, x, timesteps, low_res, **kwargs):
         _, _, new_height, new_width = x.shape

@@ -66,14 +66,17 @@ class IDDPM(MlSystem):
             self._lr_scheduler.update(self.trainer.global_step)
 
     def training_step(self, batch, batch_idx: int, *args, **kwargs):
+        # The kwargs dict was used for class labels and super res:
+        # "y" mapped to values that are integer tensors of class labels.
+        # "low_res" mapped to `F.interpolate(large_batch, small_size, mode="area")`
         if isinstance(batch, torch.Tensor):
-            cond = {}
+            batch_kwargs = {}
         else:
-            batch, cond = batch
+            batch, batch_kwargs = batch
         # update scheduler
         t, weights = self._sampler.sample(batch.shape[0], device=self.device)
         # compute loss
-        losses = self._diffusion.training_losses(model=self._online_model, x_start=batch, t=t, model_kwargs=cond, noise=None)
+        losses = self._diffusion.training_losses(model=self._online_model, x_start=batch, t=t, model_kwargs=batch_kwargs, noise=None)
         # update scheduler
         if isinstance(self._sampler, LossAwareSampler):
             self._sampler.update_with_local_losses(t, losses["loss"].detach())

@@ -19,9 +19,10 @@ system_cls:
     num_res_blocks: 2
     num_heads: 4
     num_heads_upsample: -1
+    channel_mult: ${system.computed.channel_mult}
     attention_resolutions: "16,8"
     dropout: 0.0
-    class_cond: False
+    num_classes: NULL  # [int] (was: class_cond=False -> NULL, class_cond=True -> 1000, num classes in dataset)
     use_checkpoint: False
     use_scale_shift_norm: True
 
@@ -54,6 +55,16 @@ datamodule_cls:
   transform:
     _target_: mtg_ml.util.transforms.ToStandardF32
     size: NULL
-    mean: NULL # ${data.meta.img_mean}
-    std: NULL # ${data.meta.img_std}
+    mean: 0.5 # ${data.meta.img_mean}
+    std: 0.5 # ${data.meta.img_std}
     pad_to_square: TRUE
+
+
+computed:
+  channel_mult: ${system.computed._channel_mults.${system.computed._im_size}}
+  # private vals
+  _im_size: "s${system.system_cls.cfg_model.image_size}"
+  _channel_mults:
+    s256: [1, 1, 2, 2, 4, 4]
+    s64:  [1, 2, 3, 4]
+    s32:  [1, 2, 2, 2]
