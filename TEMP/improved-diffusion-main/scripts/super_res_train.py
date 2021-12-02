@@ -1,47 +1,33 @@
 """
 Train a super-resolution model.
 """
-
-import argparse
+from dataclasses import dataclass
 
 import torch.nn.functional as F
 
-from improved_diffusion import dist_util, logger
 from improved_diffusion.image_datasets import load_data
 from improved_diffusion.resample import create_named_schedule_sampler
-from improved_diffusion.script_util import (
-    sr_model_and_diffusion_defaults,
-    sr_create_model_and_diffusion,
-    args_to_dict,
-    add_dict_to_argparser,
-)
+from improved_diffusion.script_util import SrModelDiffusionCfg, create_model_and_diffusion
 from improved_diffusion.train_util import TrainLoop
 
 
 def main():
-    args = create_argparser().parse_args()
+    args = SrTrainCfg.parse_args()
 
-    dist_util.setup_dist()
-    logger.configure()
-
-    logger.log("creating model...")
-    model, diffusion = sr_create_model_and_diffusion(
-        **args_to_dict(args, sr_model_and_diffusion_defaults().keys())
-    )
-    model.to(dist_util.dev())
+    # create model and diffusion
+    model, diffusion = create_model_and_diffusion(args)
     schedule_sampler = create_named_schedule_sampler(args.schedule_sampler, diffusion)
 
-    logger.log("creating data loader...")
+    # create data loader
     data = load_superres_data(
-        args.data_dir,
-        args.batch_size,
-        large_size=args.large_size,
+        data_dir=args.data_dir,
+        batch_size=args.batch_size,
+        large_size=args.image_size,
         small_size=args.small_size,
         class_cond=args.class_cond,
     )
 
-    logger.log("training...")
-    TrainLoop(
+    trainer = TrainLoop(
         model=model,
         diffusion=diffusion,
         data=data,
@@ -49,15 +35,18 @@ def main():
         microbatch=args.microbatch,
         lr=args.lr,
         ema_rate=args.ema_rate,
-        log_interval=args.log_interval,
-        save_interval=args.save_interval,
-        resume_checkpoint=args.resume_checkpoint,
-        use_fp16=args.use_fp16,
-        fp16_scale_growth=args.fp16_scale_growth,
+        # log_interval=args.log_interval,
+        # save_interval=args.save_interval,
+        # resume_checkpoint=args.resume_checkpoint,
+        # use_fp16=args.use_fp16,
+        # fp16_scale_growth=args.fp16_scale_growth,
         schedule_sampler=schedule_sampler,
         weight_decay=args.weight_decay,
         lr_anneal_steps=args.lr_anneal_steps,
-    ).run_loop()
+    )
+
+    # train
+    trainer.run_loop()
 
 
 def load_superres_data(data_dir, batch_size, large_size, small_size, class_cond=False):
@@ -72,26 +61,21 @@ def load_superres_data(data_dir, batch_size, large_size, small_size, class_cond=
         yield large_batch, model_kwargs
 
 
-def create_argparser():
-    defaults = dict(
-        data_dir="",
-        schedule_sampler="uniform",
-        lr=1e-4,
-        weight_decay=0.0,
-        lr_anneal_steps=0,
-        batch_size=1,
-        microbatch=-1,
-        ema_rate="0.9999",
-        log_interval=10,
-        save_interval=10000,
-        resume_checkpoint="",
-        use_fp16=False,
-        fp16_scale_growth=1e-3,
-    )
-    defaults.update(sr_model_and_diffusion_defaults())
-    parser = argparse.ArgumentParser()
-    add_dict_to_argparser(parser, defaults)
-    return parser
+@dataclass
+class SrTrainCfg(SrModelDiffusionCfg):
+    data_dir: str = ""
+    schedule_sampler: str = "uniform"
+    lr: float = 1e-4
+    weight_decay: float = 0.0
+    lr_anneal_steps: int = 0
+    batch_size: int = 1
+    microbatch: int = -1
+    ema_rate: str = "0.9999"
+    # log_interval: int = 10
+    # save_interval: int = 10000
+    # resume_checkpoint: str = ""
+    # use_fp16: bool = False
+    # fp16_scale_growth: float = 1e-3
 
 
 if __name__ == "__main__":

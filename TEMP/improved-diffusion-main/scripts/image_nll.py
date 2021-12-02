@@ -8,33 +8,29 @@ import os
 import numpy as np
 import torch.distributed as dist
 
-from improved_diffusion import dist_util, logger
+# from improved_diffusion import dist_util, logger
 from improved_diffusion.image_datasets import load_data
 from improved_diffusion.script_util import (
-    model_and_diffusion_defaults,
+    ImageModelDiffusionCfg,
     create_model_and_diffusion,
-    add_dict_to_argparser,
-    args_to_dict,
+    # add_dict_to_argparser,
+    # args_to_dict,
 )
 
 
 def main():
-    args = create_argparser().parse_args()
+    args = ImageNllCfg.parse_args()
 
-    dist_util.setup_dist()
-    logger.configure()
+    # dist_util.setup_dist()
+    # logger.configure()
 
-    logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion(
-        **args_to_dict(args, model_and_diffusion_defaults().keys())
-    )
-    model.load_state_dict(
-        dist_util.load_state_dict(args.model_path, map_location="cpu")
-    )
+    # logger.log("creating model and diffusion...")
+    model, diffusion = create_model_and_diffusion(args)
+    model.load_state_dict(dist_util.load_state_dict(args.model_path, map_location="cpu"))
     model.to(dist_util.dev())
     model.eval()
 
-    logger.log("creating data loader...")
+    # logger.log("creating data loader...")
     data = load_data(
         data_dir=args.data_dir,
         batch_size=args.batch_size,
@@ -43,7 +39,7 @@ def main():
         deterministic=True,
     )
 
-    logger.log("evaluating...")
+    # logger.log("evaluating...")
     run_bpd_evaluation(model, diffusion, data, args.num_samples, args.clip_denoised)
 
 
@@ -70,26 +66,24 @@ def run_bpd_evaluation(model, diffusion, data, num_samples, clip_denoised):
         all_bpd.append(total_bpd.item())
         num_complete += dist.get_world_size() * batch.shape[0]
 
-        logger.log(f"done {num_complete} samples: bpd={np.mean(all_bpd)}")
+        # logger.log(f"done {num_complete} samples: bpd={np.mean(all_bpd)}")
 
     if dist.get_rank() == 0:
         for name, terms in all_metrics.items():
             out_path = os.path.join(logger.get_dir(), f"{name}_terms.npz")
-            logger.log(f"saving {name} terms to {out_path}")
+            # logger.log(f"saving {name} terms to {out_path}")
             np.savez(out_path, np.mean(np.stack(terms), axis=0))
 
     dist.barrier()
-    logger.log("evaluation complete")
+    # logger.log("evaluation complete")
 
 
-def create_argparser():
-    defaults = dict(
-        data_dir="", clip_denoised=True, num_samples=1000, batch_size=1, model_path=""
-    )
-    defaults.update(model_and_diffusion_defaults())
-    parser = argparse.ArgumentParser()
-    add_dict_to_argparser(parser, defaults)
-    return parser
+class ImageNllCfg(ImageModelDiffusionCfg):
+    data_dir: str = ""
+    clip_denoised: bool = True
+    num_samples: int = 1000
+    batch_size: int = 1
+    model_path: str = ""
 
 
 if __name__ == "__main__":

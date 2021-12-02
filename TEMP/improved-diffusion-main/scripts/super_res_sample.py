@@ -3,43 +3,30 @@ Generate a large batch of samples from a super resolution model, given a batch
 of samples from a regular model from image_sample.py.
 """
 
-import argparse
 import os
+from dataclasses import dataclass
 
-import blobfile as bf
 import numpy as np
 import torch as th
 import torch.distributed as dist
 
-from improved_diffusion import dist_util, logger
 from improved_diffusion.script_util import (
-    sr_model_and_diffusion_defaults,
-    sr_create_model_and_diffusion,
-    args_to_dict,
-    add_dict_to_argparser,
+    SrModelDiffusionCfg,
+    create_model_and_diffusion,
 )
 
-
 def main():
-    args = create_argparser().parse_args()
+    args = SrSampleCfg.parse_args()
 
-    dist_util.setup_dist()
-    logger.configure()
-
-    logger.log("creating model...")
-    model, diffusion = sr_create_model_and_diffusion(
-        **args_to_dict(args, sr_model_and_diffusion_defaults().keys())
-    )
-    model.load_state_dict(
-        dist_util.load_state_dict(args.model_path, map_location="cpu")
-    )
+    model, diffusion = create_model_and_diffusion(args)
+    model.load_state_dict(dist_util.load_state_dict(args.model_path, map_location="cpu"))
     model.to(dist_util.dev())
     model.eval()
 
-    logger.log("loading data...")
+    # logger.log("loading data...")
     data = load_data_for_worker(args.base_samples, args.batch_size, args.class_cond)
 
-    logger.log("creating samples...")
+    # logger.log("creating samples...")
     all_images = []
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = next(data)
@@ -58,18 +45,18 @@ def main():
         dist.all_gather(all_samples, sample)  # gather not supported with NCCL
         for sample in all_samples:
             all_images.append(sample.cpu().numpy())
-        logger.log(f"created {len(all_images) * args.batch_size} samples")
+        # logger.log(f"created {len(all_images) * args.batch_size} samples")
 
     arr = np.concatenate(all_images, axis=0)
     arr = arr[: args.num_samples]
     if dist.get_rank() == 0:
         shape_str = "x".join([str(x) for x in arr.shape])
         out_path = os.path.join(logger.get_dir(), f"samples_{shape_str}.npz")
-        logger.log(f"saving to {out_path}")
+        # logger.log(f"saving to {out_path}")
         np.savez(out_path, arr)
 
     dist.barrier()
-    logger.log("sampling complete")
+    # logger.log("sampling complete")
 
 
 def load_data_for_worker(base_samples, batch_size, class_cond):
@@ -98,19 +85,14 @@ def load_data_for_worker(base_samples, batch_size, class_cond):
                 buffer, label_buffer = [], []
 
 
-def create_argparser():
-    defaults = dict(
-        clip_denoised=True,
-        num_samples=10000,
-        batch_size=16,
-        use_ddim=False,
-        base_samples="",
-        model_path="",
-    )
-    defaults.update(sr_model_and_diffusion_defaults())
-    parser = argparse.ArgumentParser()
-    add_dict_to_argparser(parser, defaults)
-    return parser
+@dataclass
+class SrSampleCfg(SrModelDiffusionCfg):
+    clip_denoised: bool = True
+    num_samples: int = 10000
+    batch_size: int = 16
+    use_ddim: bool = False
+    base_samples: str = ""
+    model_path: str = ""
 
 
 if __name__ == "__main__":

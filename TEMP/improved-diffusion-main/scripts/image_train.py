@@ -2,80 +2,66 @@
 Train a diffusion model on images.
 """
 
-import argparse
+from dataclasses import dataclass
 
-from improved_diffusion import dist_util, logger
 from improved_diffusion.image_datasets import load_data
 from improved_diffusion.resample import create_named_schedule_sampler
-from improved_diffusion.script_util import (
-    model_and_diffusion_defaults,
-    create_model_and_diffusion,
-    args_to_dict,
-    add_dict_to_argparser,
-)
+from improved_diffusion.script_util import ImageModelDiffusionCfg, create_model_and_diffusion
 from improved_diffusion.train_util import TrainLoop
 
 
 def main():
-    args = create_argparser().parse_args()
+    cfg = ImageTrainCfg.parse_args()
 
-    dist_util.setup_dist()
-    logger.configure()
+    # create model and diffusion
+    model, diffusion = create_model_and_diffusion(cfg)
+    schedule_sampler = create_named_schedule_sampler(cfg.schedule_sampler, diffusion)
 
-    logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion(
-        **args_to_dict(args, model_and_diffusion_defaults().keys())
-    )
-    model.to(dist_util.dev())
-    schedule_sampler = create_named_schedule_sampler(args.schedule_sampler, diffusion)
-
-    logger.log("creating data loader...")
+    # create data loader
     data = load_data(
-        data_dir=args.data_dir,
-        batch_size=args.batch_size,
-        image_size=args.image_size,
-        class_cond=args.class_cond,
+        data_dir=cfg.data_dir,
+        batch_size=cfg.batch_size,
+        image_size=cfg.image_size,
+        class_cond=cfg.class_cond,
     )
 
-    logger.log("training...")
-    TrainLoop(
+    trainer = TrainLoop(
         model=model,
         diffusion=diffusion,
         data=data,
-        batch_size=args.batch_size,
-        microbatch=args.microbatch,
-        lr=args.lr,
-        ema_rate=args.ema_rate,
-        log_interval=args.log_interval,
-        save_interval=args.save_interval,
-        resume_checkpoint=args.resume_checkpoint,
-        fp16_scale_growth=args.fp16_scale_growth,
+        batch_size=cfg.batch_size,
+        microbatch=cfg.microbatch,
+        lr=cfg.lr,
+        ema_rate=cfg.ema_rate,
+        # log_interval=cfg.log_interval,
+        # save_interval=cfg.save_interval,
+        # resume_checkpoint=cfg.resume_checkpoint,
+        # use_fp16=cfg.use_fp16,
+        # fp16_scale_growth=cfg.fp16_scale_growth,
         schedule_sampler=schedule_sampler,
-        weight_decay=args.weight_decay,
-        lr_anneal_steps=args.lr_anneal_steps,
-    ).run_loop()
-
-
-def create_argparser():
-    defaults = dict(
-        data_dir="",
-        schedule_sampler="uniform",
-        lr=1e-4,
-        weight_decay=0.0,
-        lr_anneal_steps=0,
-        batch_size=1,
-        microbatch=-1,  # -1 disables microbatches
-        ema_rate="0.9999",  # comma-separated list of EMA values
-        log_interval=10,
-        save_interval=10000,
-        resume_checkpoint="",
-        use_fp16=False,
-        fp16_scale_growth=1e-3,
+        weight_decay=cfg.weight_decay,
+        lr_anneal_steps=cfg.lr_anneal_steps,
     )
-    defaults.update(model_and_diffusion_defaults())
-    parser = argparse.ArgumentParser()
-    add_dict_to_argparser(parser, defaults)
-    return parser
+
+    # train
+    trainer.run_loop()
+
+
+@dataclass
+class ImageTrainCfg(ImageModelDiffusionCfg):
+    data_dir: str = ""
+    schedule_sampler: str = "uniform"
+    lr: float = 1e-4
+    weight_decay: float = 0.0
+    lr_anneal_steps: int = 0
+    batch_size: int = 1
+    microbatch: int = -1  # -1 disables microbatches
+    ema_rate: str = "0.9999"  # comma-separated list of EMA values
+    # log_interval: int = 10
+    # save_interval: int = 10000
+    # resume_checkpoint: str = ""
+    # use_fp16: bool = False
+    # fp16_scale_growth: float = 1e-3
 
 
 if __name__ == "__main__":
