@@ -7,7 +7,8 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .fp16_util import convert_module_to_f16, convert_module_to_f32
+# from .fp16_util import convert_module_to_f16, convert_module_to_f32
+
 from .nn import (
     SiLU,
     conv_nd,
@@ -436,21 +437,21 @@ class UNetModel(nn.Module):
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
 
-    def convert_to_fp16(self):
-        """
-        Convert the torso of the model to float16.
-        """
-        self.input_blocks.apply(convert_module_to_f16)
-        self.middle_block.apply(convert_module_to_f16)
-        self.output_blocks.apply(convert_module_to_f16)
-
-    def convert_to_fp32(self):
-        """
-        Convert the torso of the model to float32.
-        """
-        self.input_blocks.apply(convert_module_to_f32)
-        self.middle_block.apply(convert_module_to_f32)
-        self.output_blocks.apply(convert_module_to_f32)
+    # def convert_to_fp16(self):
+    #     """
+    #     Convert the torso of the model to float16.
+    #     """
+    #     self.input_blocks.apply(convert_module_to_f16)
+    #     self.middle_block.apply(convert_module_to_f16)
+    #     self.output_blocks.apply(convert_module_to_f16)
+    #
+    # def convert_to_fp32(self):
+    #     """
+    #     Convert the torso of the model to float32.
+    #     """
+    #     self.input_blocks.apply(convert_module_to_f32)
+    #     self.middle_block.apply(convert_module_to_f32)
+    #     self.output_blocks.apply(convert_module_to_f32)
 
     @property
     def inner_dtype(self):
@@ -544,4 +545,3 @@ class SuperResModel(UNetModel):
         upsampled = F.interpolate(low_res, (new_height, new_width), mode="bilinear")
         x = th.cat([x, upsampled], dim=1)
         return super().get_feature_vectors(x, timesteps, **kwargs)
-
