@@ -4,6 +4,7 @@ import hydra
 import pytorch_lightning as pl
 import torch
 
+from improved_diffusion.train_util import IddpmVisualiseCallback
 from mtg_ml.util.func import instantiate_required
 
 
@@ -16,6 +17,10 @@ def run_training(cfg):
     trainer = pl.Trainer(
         max_steps=cfg.system.system_cls.lr_anneal_steps,
         gpus=1 if torch.cuda.is_available() else 0,
+        callbacks=[
+            IddpmVisualiseCallback(name='iddpm_online', every_n_steps=100, mean_std=(0.5, 0.5), sample_kwargs=dict(online=True)),
+            IddpmVisualiseCallback(name='iddpm_target', every_n_steps=100, mean_std=(0.5, 0.5), sample_kwargs=dict(online=False)),
+        ],
     )
     # train
     trainer.fit(system, datamodule)

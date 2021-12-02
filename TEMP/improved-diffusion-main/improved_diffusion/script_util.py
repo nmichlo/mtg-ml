@@ -3,7 +3,6 @@ from typing import Optional
 from typing import Tuple
 from typing import Union
 
-from util import Cfg
 from . import gaussian_diffusion as gd
 from .gaussian_diffusion import GaussianDiffusion
 from .resample import create_named_schedule_sampler
@@ -69,7 +68,7 @@ class DiffusionAndSampleCfg:
     schedule_sampler: str = "uniform"
 
 
-def create_model(cfg: Union[ImageModelCfg, SrModelCfg]):
+def create_model(cfg: Union[ImageModelCfg, SrModelCfg]) -> Union[UNetModel, SuperResModel]:
     return cfg._model_cls_(
         in_channels=3,
         model_channels=cfg.num_channels,
