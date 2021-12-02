@@ -31,6 +31,7 @@ class TimestepBlock(nn.Module):
         """
         Apply the module to `x` given `emb` timestep embeddings.
         """
+        raise NotImplementedError
 
 
 class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
@@ -64,14 +65,12 @@ class Upsample(nn.Module):
         self.use_conv = use_conv
         self.dims = dims
         if use_conv:
-            self.conv = conv_nd(dims, channels, channels, 3, padding=1)
+            self.conv = conv_nd(dims, channels, channels, 3, padding=1)  # 3 should probably be 4 to avoid artifacts
 
     def forward(self, x):
         assert x.shape[1] == self.channels
         if self.dims == 3:
-            x = F.interpolate(
-                x, (x.shape[2], x.shape[3] * 2, x.shape[4] * 2), mode="nearest"
-            )
+            x = F.interpolate(x, (x.shape[2], x.shape[3] * 2, x.shape[4] * 2), mode="nearest")
         else:
             x = F.interpolate(x, scale_factor=2, mode="nearest")
         if self.use_conv:
@@ -96,7 +95,7 @@ class Downsample(nn.Module):
         self.dims = dims
         stride = 2 if dims != 3 else (1, 2, 2)
         if use_conv:
-            self.op = conv_nd(dims, channels, channels, 3, stride=stride, padding=1)
+            self.op = conv_nd(dims, channels, channels, 3, stride=stride, padding=1)  # should probs be 4 to avoid artifacts
         else:
             self.op = avg_pool_nd(stride)
 
