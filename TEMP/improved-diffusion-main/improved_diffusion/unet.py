@@ -7,8 +7,6 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-# from .fp16_util import convert_module_to_f16, convert_module_to_f32
-
 from .nn import (
     SiLU,
     conv_nd,
@@ -437,22 +435,6 @@ class UNetModel(nn.Module):
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
 
-    # def convert_to_fp16(self):
-    #     """
-    #     Convert the torso of the model to float16.
-    #     """
-    #     self.input_blocks.apply(convert_module_to_f16)
-    #     self.middle_block.apply(convert_module_to_f16)
-    #     self.output_blocks.apply(convert_module_to_f16)
-    #
-    # def convert_to_fp32(self):
-    #     """
-    #     Convert the torso of the model to float32.
-    #     """
-    #     self.input_blocks.apply(convert_module_to_f32)
-    #     self.middle_block.apply(convert_module_to_f32)
-    #     self.output_blocks.apply(convert_module_to_f32)
-
     @property
     def inner_dtype(self):
         """
@@ -534,13 +516,13 @@ class SuperResModel(UNetModel):
     def __init__(self, in_channels, *args, **kwargs):
         super().__init__(in_channels * 2, *args, **kwargs)
 
-    def forward(self, x, timesteps, low_res=None, **kwargs):
+    def forward(self, x, timesteps, low_res, **kwargs):
         _, _, new_height, new_width = x.shape
         upsampled = F.interpolate(low_res, (new_height, new_width), mode="bilinear")
         x = th.cat([x, upsampled], dim=1)
         return super().forward(x, timesteps, **kwargs)
 
-    def get_feature_vectors(self, x, timesteps, low_res=None, **kwargs):
+    def get_feature_vectors(self, x, timesteps, low_res, **kwargs):
         _, new_height, new_width, _ = x.shape
         upsampled = F.interpolate(low_res, (new_height, new_width), mode="bilinear")
         x = th.cat([x, upsampled], dim=1)

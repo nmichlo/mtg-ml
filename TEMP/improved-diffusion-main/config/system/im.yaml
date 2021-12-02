@@ -1,0 +1,38 @@
+
+# DEFAULTS:
+# - image_size: 64
+# - num_channels: 128
+# - num_res_blocks: 2
+# - num_heads: 4
+# - num_heads_upsample: -1
+# - attention_resolutions: "16,8"
+# - dropout: 0.0
+# - class_cond: False
+# - use_checkpoint: False
+# - use_scale_shift_norm: True
+
+model:
+  _target_: improved_diffusion.
+  in_channels: 3
+  model_channels: num_channels
+  out_channels: (3 if not learn_sigma else 6)
+  num_res_blocks: num_res_blocks
+  attention_resolutions: tuple(attention_ds)
+  dropout: dropout
+  channel_mult: channel_mult
+  num_classes: (NUM_CLASSES if class_cond else None)
+  use_checkpoint: use_checkpoint
+  num_heads: num_heads
+  num_heads_upsample: num_heads_upsample
+  use_scale_shift_norm: use_scale_shift_norm
+
+  image_size: 64
+  num_channels: 128
+  num_res_blocks: 2
+  num_heads: 4
+  num_heads_upsample: -1
+  attention_resolutions: "16,8"
+  dropout: 0.0
+  class_cond: False
+  use_checkpoint: False
+  use_scale_shift_norm: True

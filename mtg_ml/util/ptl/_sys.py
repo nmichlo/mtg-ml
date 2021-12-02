@@ -14,6 +14,15 @@ class MlSystem(pl.LightningModule):
         tqdm_dict.pop("v_num", None)
         return tqdm_dict
 
+    def configure_optimizers(self):
+        raise NotImplementedError
+
+    def training_step(self, batch, batch_idx: int, *args, **kwargs):
+        raise NotImplementedError
+
+    def forward(self, x, *args, **kwargs):
+        raise NotImplementedError
+
     # override these .. we should rather use a DataModule!
     train_dataloader = None
     test_dataloader = None
