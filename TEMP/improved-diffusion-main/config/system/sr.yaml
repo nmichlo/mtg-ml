@@ -1,1 +1,41 @@
 
+system_cls:
+  _target_: improved_diffusion.train_util.IDDPM
+
+  lr: 1e-4,
+  lr_anneal_steps: NULL
+  weight_decay: 0.0
+  ewm_rate: 0.9999
+
+  cfg_model:
+    _target_: improved_diffusion.script_util.SrModelCfg
+    # both
+    learn_sigma: False
+    # model
+    image_size: 256    # overridden (was: large_size)
+    small_size: 64     # addition
+    num_channels: 128
+    num_res_blocks: 2
+    num_heads: 4
+    num_heads_upsample: -1
+    attention_resolutions: "16,8"
+    dropout: 0.0
+    class_cond: False
+    use_checkpoint: False
+    use_scale_shift_norm: True
+
+  cfg_diffusion_and_sample:
+    _target_: improved_diffusion.script_util.DiffusionAndSampleCfg
+    # both
+    learn_sigma: False
+    # diffusion
+    diffusion_steps: 1000
+    sigma_small: False
+    noise_schedule: "linear"
+    use_kl: False
+    predict_xstart: False
+    rescale_timesteps: True       # might actually be false?
+    rescale_learned_sigmas: True  # might actually be false?
+    timestep_respacing: ""
+    # schedule sampler
+    schedule_sampler: "uniform"

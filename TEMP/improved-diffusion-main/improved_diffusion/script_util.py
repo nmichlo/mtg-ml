@@ -129,7 +129,7 @@ def create_diffusion_and_sampler(cfg: DiffusionAndSampleCfg) -> Tuple[GaussianDi
 
     sampler = create_named_schedule_sampler(
         name=cfg.schedule_sampler,
-        diffusion=diffusion,
+        num_timesteps=diffusion.num_timesteps,
     )
 
     return diffusion, sampler

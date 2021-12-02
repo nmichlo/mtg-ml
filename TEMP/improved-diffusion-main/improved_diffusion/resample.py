@@ -5,7 +5,7 @@ import torch as th
 import torch.distributed as dist
 
 
-def create_named_schedule_sampler(name, diffusion):
+def create_named_schedule_sampler(name: str, num_timesteps: int):
     """
     Create a ScheduleSampler from a library of pre-defined samplers.
 
@@ -13,9 +13,9 @@ def create_named_schedule_sampler(name, diffusion):
     :param diffusion: the diffusion object to sample for.
     """
     if name == "uniform":
-        return UniformSampler(diffusion)
+        return UniformSampler(num_timesteps=num_timesteps)
     elif name == "loss-second-moment":
-        return LossSecondMomentResampler(diffusion)
+        return LossSecondMomentResampler(num_timesteps=num_timesteps)
     else:
         raise NotImplementedError(f"unknown schedule sampler: {name}")
 
@@ -121,18 +121,17 @@ class LossAwareSampler(ScheduleSampler):
 
 
 class LossSecondMomentResampler(LossAwareSampler):
-    def __init__(self, diffusion, history_per_term=10, uniform_prob=0.001):
-        self.diffusion = diffusion
+
+    def __init__(self, num_timesteps: int, history_per_term=10, uniform_prob=0.001):
+        self._num_timesteps = num_timesteps
         self.history_per_term = history_per_term
         self.uniform_prob = uniform_prob
-        self._loss_history = np.zeros(
-            [diffusion.num_timesteps, history_per_term], dtype=np.float64
-        )
-        self._loss_counts = np.zeros([diffusion.num_timesteps], dtype=np.int)
+        self._loss_history = np.zeros([self._num_timesteps, history_per_term], dtype=np.float64)
+        self._loss_counts = np.zeros([self._num_timesteps], dtype=np.int)
 
     def weights(self):
         if not self._warmed_up():
-            return np.ones([self.diffusion.num_timesteps], dtype=np.float64)
+            return np.ones([self._num_timesteps], dtype=np.float64)
         weights = np.sqrt(np.mean(self._loss_history ** 2, axis=-1))
         weights /= np.sum(weights)
         weights *= 1 - self.uniform_prob

@@ -1,38 +1,59 @@
 
-# DEFAULTS:
-# - image_size: 64
-# - num_channels: 128
-# - num_res_blocks: 2
-# - num_heads: 4
-# - num_heads_upsample: -1
-# - attention_resolutions: "16,8"
-# - dropout: 0.0
-# - class_cond: False
-# - use_checkpoint: False
-# - use_scale_shift_norm: True
+system_cls:
+  _target_: improved_diffusion.train_util.IDDPM
+  _recursive_: False
 
-model:
-  _target_: improved_diffusion.
-  in_channels: 3
-  model_channels: num_channels
-  out_channels: (3 if not learn_sigma else 6)
-  num_res_blocks: num_res_blocks
-  attention_resolutions: tuple(attention_ds)
-  dropout: dropout
-  channel_mult: channel_mult
-  num_classes: (NUM_CLASSES if class_cond else None)
-  use_checkpoint: use_checkpoint
-  num_heads: num_heads
-  num_heads_upsample: num_heads_upsample
-  use_scale_shift_norm: use_scale_shift_norm
+  lr: 1e-4
+  lr_anneal_steps: NULL
+  weight_decay: 0.0
+  ewm_rate: 0.9999
 
-  image_size: 64
-  num_channels: 128
-  num_res_blocks: 2
-  num_heads: 4
-  num_heads_upsample: -1
-  attention_resolutions: "16,8"
-  dropout: 0.0
-  class_cond: False
-  use_checkpoint: False
-  use_scale_shift_norm: True
+  cfg_model:
+    _target_: improved_diffusion.script_util.ImageModelCfg
+    # both
+    learn_sigma: False
+    # model
+    image_size: 64
+    # small_size: N/A
+    num_channels: 128
+    num_res_blocks: 2
+    num_heads: 4
+    num_heads_upsample: -1
+    attention_resolutions: "16,8"
+    dropout: 0.0
+    class_cond: False
+    use_checkpoint: False
+    use_scale_shift_norm: True
+
+  cfg_diffusion_and_sample:
+    _target_: improved_diffusion.script_util.DiffusionAndSampleCfg
+    # both
+    learn_sigma: False
+    # diffusion
+    diffusion_steps: 1000
+    sigma_small: False
+    noise_schedule: "linear"
+    use_kl: False
+    predict_xstart: False
+    rescale_timesteps: True       # might actually be false?
+    rescale_learned_sigmas: True  # might actually be false?
+    timestep_respacing: ""
+    # schedule sampler
+    schedule_sampler: "uniform"
+
+datamodule_cls:
+  _target_: mtg_ml.util.ptl.Hdf5DataModule
+  _recursive_: False
+  # CONFIG
+  h5_path: '${oc.env:HOME}/workspace/playground/mtg-dataset/data/mtg_default-cards-20211128100240_normal_65903x64x46x3_c4.h5'
+  h5_dataset_name: 'data'
+  batch_size: 1 # ${settings.data.batch_size}
+  val_ratio: 0.0
+  num_workers: 4
+  in_memory: FALSE
+  transform:
+    _target_: mtg_ml.util.transforms.ToStandardF32
+    size: NULL
+    mean: NULL # ${data.meta.img_mean}
+    std: NULL # ${data.meta.img_std}
+    pad_to_square: TRUE
