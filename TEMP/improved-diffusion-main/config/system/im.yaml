@@ -68,3 +68,26 @@ computed:
     s256: [1, 1, 2, 2, 4, 4]
     s64:  [1, 2, 3, 4]
     s32:  [1, 2, 2, 2]
+
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+
+  max_steps: ${system.system_cls.lr_anneal_steps}
+  gpus: [1]
+
+  callbacks:
+    - _target_: improved_diffusion.train_util.IddpmVisualiseCallback
+      name: 'iddpm_online'
+      every_n_steps: 2000
+      mean_std: [0.5, 0.5]
+      save_dir: 'data'
+      sample_kwargs:
+        online: True
+    - _target_: improved_diffusion.train_util.IddpmVisualiseCallback
+      name: 'iddpm_target'
+      every_n_steps: 2000
+      mean_std: [0.5, 0.5]
+      save_dir: 'data'
+      sample_kwargs:
+        online: False

@@ -39,3 +39,10 @@ system_cls:
     timestep_respacing: ""
     # schedule sampler
     schedule_sampler: "uniform"
+
+
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  max_steps: ${system.system_cls.lr_anneal_steps}
+  gpus: 1
