@@ -98,8 +98,9 @@ class IDDPM(MlSystem):
         # [1. anneal lr, 2. step optimizer, 3. update ewm]
         rate = self.hparams.ewm_rate
         # apply EMA weight update
-        for (src_name, src), (trg_name, trg) in zip(self._online_model.named_parameters(), self._target_model.named_parameters()):
-            trg.detach().mul_(rate).add_(src, alpha=1-rate)
+        if self._target_model is not None:
+            for (src_name, src), (trg_name, trg) in zip(self._online_model.named_parameters(), self._target_model.named_parameters()):
+                trg.detach().mul_(rate).add_(src, alpha=1-rate)
 
     def forward(self, x, timesteps, online: bool = False, **kwargs):
         model = self._get_model(online=online)

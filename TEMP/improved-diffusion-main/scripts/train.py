@@ -18,8 +18,8 @@ def run_training(cfg):
         max_steps=cfg.system.system_cls.lr_anneal_steps,
         gpus=1 if torch.cuda.is_available() else 0,
         callbacks=[
-            IddpmVisualiseCallback(name='iddpm_online', every_n_steps=100, mean_std=(0.5, 0.5), sample_kwargs=dict(online=True)),
-            IddpmVisualiseCallback(name='iddpm_target', every_n_steps=100, mean_std=(0.5, 0.5), sample_kwargs=dict(online=False)),
+            IddpmVisualiseCallback(name='iddpm_online', every_n_steps=2000, mean_std=(0.5, 0.5), save_dir='data', sample_kwargs=dict(online=True)),
+            IddpmVisualiseCallback(name='iddpm_target', every_n_steps=2000, mean_std=(0.5, 0.5), save_dir='data', sample_kwargs=dict(online=False)),
         ],
     )
     # train
