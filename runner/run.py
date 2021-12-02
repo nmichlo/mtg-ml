@@ -1,9 +1,11 @@
 import logging
 import os
+import pickle
 from contextlib import contextmanager
 from datetime import datetime
 
 import hydra
+import pytorch_lightning
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
 
@@ -62,6 +64,9 @@ def action_train(cfg: DictConfig):
     # HYDRA MODULES
     datamodule = hydra.utils.instantiate(cfg.data.module_cls, _recursive_=False)
     framework = hydra.utils.instantiate(cfg.framework.system_cls)
+
+    pickle.dumps(datamodule)
+    pickle.dumps(framework)
 
     # TRAIN
     trainer = hydra.utils.instantiate(cfg.trainer)

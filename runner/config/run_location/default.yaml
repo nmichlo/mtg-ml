@@ -8,10 +8,12 @@ hydra:
       ML_DATA_ROOT: ${oc.env:HOME}/workspace/playground/mtg-ml/data
       ML_OUT_ROOT: ${oc.env:HOME}/workspace/playground/mtg-ml/out
       # distributed backend settings: https://pytorch.org/docs/stable/distributed.html
-      # NCCL_DEBUG: "INFO"
-      # NCCL_DEBUG_SUBSYS: "ALL"
+      NCCL_DEBUG: "INFO"
+      NCCL_DEBUG_SUBSYS: "ALL"
       # NCCL_ASYNC_ERROR_HANDLING: "1"
       NCCL_BLOCKING_WAIT: "1"
       TORCH_DISTRIBUTED_DEBUG: "DETAIL"
+      # CUDA_LAUNCH_BLOCKING: "1"
+      PL_TORCH_DISTRIBUTED_BACKEND: "nccl"
   run:
     dir: ${hydra.job.env_set.ML_OUT_ROOT}/${next_num:${hydra.job.env_set.ML_OUT_ROOT}}__${now:%Y-%m-%d--%H-%M-%S}

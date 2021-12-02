@@ -11,8 +11,8 @@ settings:
 
 trainer:
   _target_: pytorch_lightning.Trainer
-#  cpus: 2
-  gpus: 1  # why does this crash?
+  gpus: 1
+#  num_nodes: 1
 #  strategy: ddp_spawn
   max_steps: 1000
   max_epochs: 1000

@@ -2,10 +2,18 @@
 tqdm>=4.50.0
 numpy>=1.19.0
 
+# ml
 torch==1.10.0
 torchvision==0.11.1
-pytorch-lightning==1.5.3
+pytorch-lightning==1.5.4
 
+# dataset
 h5py==3.6.0
 
+# ml utils
 disent==0.3.3
+
+# extras
+wandb==0.12.7
+imageio==2.13.1
+matplotlib==3.5.0
