@@ -7,8 +7,8 @@ import torch
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch.optim import AdamW
 
-from lr_schedule import OptimStepSchedule
-from lr_schedule import OptimStepScheduleLinear
+from improved_diffusion.lr_schedule import OptimStepSchedule
+from improved_diffusion.lr_schedule import OptimStepScheduleLinear
 from mtg_ml.util.func import instantiate_required
 from mtg_ml.util.ptl import MlSystem
 from .gaussian_diffusion import GaussianDiffusion

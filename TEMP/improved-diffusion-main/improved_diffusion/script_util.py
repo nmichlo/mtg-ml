@@ -18,7 +18,7 @@ NUM_CLASSES = 1000
 
 
 @dataclass
-class _ModelCfg(Cfg):
+class _ModelCfg:
     # both
     learn_sigma: bool = False
     # model
@@ -53,7 +53,7 @@ class SrModelCfg(_ModelCfg):
 
 
 @dataclass
-class DiffusionAndSampleCfg(Cfg):
+class DiffusionAndSampleCfg:
     # both
     learn_sigma: bool = False
     # diffusion
