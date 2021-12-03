@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from datetime import datetime
 
 import hydra
-import pytorch_lightning
 from omegaconf import DictConfig
 from omegaconf import OmegaConf
 

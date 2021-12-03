@@ -1,13 +1,13 @@
 defaults:
   - data: mtg64
-  - framework: sivae
+  - framework: basic_denoiser
   - run_location: default
 
 settings:
   job:
     seed: 777
   data:
-    batch_size: 32
+    batch_size: 16
 
 trainer:
   _target_: pytorch_lightning.Trainer
@@ -19,8 +19,8 @@ trainer:
   callbacks:
     - _target_: mtg_ml.util.ptl.VisualiseCallback
       name: 'vis'
-      input_batch: 16
-      every_n_steps: 100
+      input_batch: 100
+      every_n_steps: 500
       log_local: FALSE
       log_wandb: FALSE
       save_dir: .
@@ -28,3 +28,9 @@ trainer:
         - ${data.meta.img_mean}
         - ${data.meta.img_std}
       figwidth: 15
+    - _target_: pytorch_lightning.callbacks.ModelCheckpoint
+      dirpath: .
+      monitor: NULL
+      every_n_train_steps: 1000
+      verbose: True
+      save_top_k: -1

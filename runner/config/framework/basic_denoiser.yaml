@@ -1,0 +1,21 @@
+name: basic_denoiser
+
+system_cls:
+  _target_: mtg_ml.framework.BasicDenoiser
+  # data
+  img_size: ${data.meta.img_size}
+  # model
+  model_channels: 64
+  model_res_blocks: 2
+  model_heads: 4
+  model_channel_multipliers: [1, 2, 3, 4]
+  model_attention_resolutions: [16, 8]
+  # optimizer
+  lr: 1e-4
+  weight_decay: 1e-7
+  # sampling & training
+  denoise_steps: 128
+  grad_steps: 2
+  # buffer
+  buffer_size: 4096  # 4096 / 16 == 256
+  buffer_samples: 16
