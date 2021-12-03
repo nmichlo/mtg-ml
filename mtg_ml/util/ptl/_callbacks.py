@@ -142,7 +142,7 @@ class VisualiseCallbackBase(pl.Callback):
             if not os.path.exists(self._save_dir):
                 os.makedirs(self._save_dir, exist_ok=True)
             for k, img in imgs.items():
-                path = os.path.abspath(os.path.join(self._save_dir, f'vis_{self._name}_{trainer.global_step}.png'))
+                path = os.path.abspath(os.path.join(self._save_dir, f'vis_{trainer.global_step}_{k}.png'))
                 imageio.imsave(path, img)
                 logger.info(f'saved model visualisation to: {repr(path)}')
 
@@ -176,20 +176,24 @@ class VisualiseCallback(VisualiseCallbackBase):
         self._input_batch = input_batch
 
     def _produce_images(self, trainer: 'pl.Trainer', pl_module: 'pl.LightningModule') -> Dict[str, np.ndarray]:
-        imgs = {}
         # get inputs
         inp = self._get_inputs(trainer)
         if inp is None:
-            return imgs
+            return {}
         # generate grid
         with evaluate_context(pl_module) as eval_module:
-            # move to correct device
-            inp = inp.to(eval_module.device)
-            # feed forward
-            out = eval_module(inp)
-            # only create image grid from valid images -- xs can sometimes be representations
-            if inp.ndim == 4: imgs['inp'] = self._img_grid_from_batch(inp)
-            if out.ndim == 4: imgs['out'] = self._img_grid_from_batch(out)
+            # check if a visualise_batch function is defined which can return multiple batch image tensors
+            if hasattr(eval_module, 'visualize_batch'):
+                vis = eval_module.visualize_batch(inp)
+                imgs = {k: self._img_grid_from_batch(batch) for k, batch in vis.items()}
+            # otherwise move to correct device & feed forward
+            else:
+                inp = inp.to(eval_module.device)
+                out = eval_module(inp)
+                # only create image grid from valid images -- xs can sometimes be representations
+                imgs = {}
+                if inp.ndim == 4: imgs['inp'] = self._img_grid_from_batch(inp)
+                if out.ndim == 4: imgs['out'] = self._img_grid_from_batch(out)
         # done!
         return imgs
 

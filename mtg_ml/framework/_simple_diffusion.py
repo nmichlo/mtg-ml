@@ -1,3 +1,4 @@
+from typing import Dict
 from typing import Optional
 from typing import Sequence
 
@@ -156,6 +157,11 @@ class BasicDenoiser(MlSystem):
         assert outputs.shape[1] == 6
         return outputs[:, :3, :, :]
 
+    def extract_latents(self, outputs: torch.Tensor):
+        assert outputs.ndim == 4
+        assert outputs.shape[1] == 6
+        return outputs[:, 3:, :, :]
+
     def pad_rgb(self, targets: torch.Tensor):
         assert targets.ndim == 4
         assert targets.shape[1] == 3
@@ -210,6 +216,21 @@ class BasicDenoiser(MlSystem):
         return x
 
     @torch.no_grad()
-    def visualise(self, xs: torch.Tensor):
-        xs_zerod = self(self.pad_rgb(xs), pad_rgb=False)
-        xs_noise = self(self._make_training_inputs(xs), pad_rgb=False)
+    def visualize_batch(self, xs: torch.Tensor) -> Dict[str, torch.Tensor]:
+        xs = xs.to(self.device)
+        # feed forward
+        xs_zerod = self.pad_rgb(xs)
+        xs_noise = self._make_training_inputs(xs)
+        # examples
+        rs_zerod = self(xs_zerod, extract_rgb=False)
+        rs_noise = self(xs_noise, extract_rgb=False)
+        # save
+        return {
+            'zerod_xs': self.extract_rgb(xs_zerod.detach()).cpu(),
+            'zerod_rs': self.extract_rgb(rs_zerod.detach()).cpu(),
+            'zerod_zs': self.extract_latents(rs_zerod.detach()).cpu(),
+            #
+            'noise_xs': self.extract_rgb(xs_noise.detach()).cpu(),
+            'noise_rs': self.extract_rgb(rs_noise.detach()).cpu(),
+            'noise_zs': self.extract_latents(rs_noise.detach()).cpu(),
+        }
