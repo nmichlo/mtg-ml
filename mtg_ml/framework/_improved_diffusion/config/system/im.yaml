@@ -1,6 +1,6 @@
 
 system_cls:
-  _target_: improved_diffusion.framework.IDDPM
+  _target_: mtg_ml.framework._improved_diffusion.IDDPM
   _recursive_: False
 
   lr: 1e-4
@@ -9,7 +9,7 @@ system_cls:
   ewm_rate: 0.9999
 
   cfg_model:
-    _target_: improved_diffusion.util.factory.ImageModelCfg
+    _target_: mtg_ml.framework._improved_diffusion.ImageModelCfg
     # both
     learn_sigma: False
     # model
@@ -27,7 +27,7 @@ system_cls:
     use_scale_shift_norm: True
 
   cfg_diffusion_and_sample:
-    _target_: improved_diffusion.util.factory.DiffusionAndSampleCfg
+    _target_: mtg_ml.framework._improved_diffusion.DiffusionAndSampleCfg
     # both
     learn_sigma: False
     # diffusion
@@ -77,14 +77,14 @@ trainer:
   gpus: 1
 
   callbacks:
-    - _target_: improved_diffusion.util.sampling.IddpmVisualiseCallback
+    - _target_: mtg_ml.framework._improved_diffusion.IddpmVisualiseCallback
       name: 'iddpm_online'
       every_n_steps: 2000
       mean_std: [0.5, 0.5]
       save_dir: 'data'
       sample_kwargs:
         online: True
-    - _target_: improved_diffusion.util.sampling.IddpmVisualiseCallback
+    - _target_: mtg_ml.framework._improved_diffusion.IddpmVisualiseCallback
       name: 'iddpm_target'
       every_n_steps: 2000
       mean_std: [0.5, 0.5]

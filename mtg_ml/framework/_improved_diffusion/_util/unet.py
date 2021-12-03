@@ -8,14 +8,14 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from improved_diffusion.util.nn import avg_pool_nd
-from improved_diffusion.util.nn import checkpoint
-from improved_diffusion.util.nn import conv_nd
-from improved_diffusion.util.nn import linear
-from improved_diffusion.util.nn import normalization
-from improved_diffusion.util.nn import SiLU
-from improved_diffusion.util.nn import timestep_embedding
-from improved_diffusion.util.nn import zero_module
+from mtg_ml.framework._improved_diffusion._util.nn import avg_pool_nd
+from mtg_ml.framework._improved_diffusion._util.nn import checkpoint
+from mtg_ml.framework._improved_diffusion._util.nn import conv_nd
+from mtg_ml.framework._improved_diffusion._util.nn import linear
+from mtg_ml.framework._improved_diffusion._util.nn import normalization
+from mtg_ml.framework._improved_diffusion._util.nn import SiLU
+from mtg_ml.framework._improved_diffusion._util.nn import timestep_embedding
+from mtg_ml.framework._improved_diffusion._util.nn import zero_module
 
 
 # ========================================================================= #

@@ -1,5 +1,5 @@
 """
-improved_diffusion/losses.py
+_improved_diffusion/losses.py
 
 Helpers for various likelihood-based losses. These are ported from the original
 Ho et al. diffusion models codebase:

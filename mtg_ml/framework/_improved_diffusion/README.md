@@ -1,3 +1,8 @@
+
+Modified heavily by Nathan Michlo, converting from pytorch to pytorch lightning.
+Original version: https://github.com/openai/improved-diffusion
+
+
 # improved-diffusion
 
 This is the codebase for [Improved Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2102.09672).

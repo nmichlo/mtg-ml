@@ -1,5 +1,5 @@
 """
-improved_diffusion/gaussian_diffusion.py
+_improved_diffusion/gaussian_diffusion.py
 
 This code started out as a PyTorch port of Ho et al's diffusion models:
 https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py
@@ -12,9 +12,9 @@ import numpy as np
 import torch as th
 import enum
 
-from improved_diffusion.util.losses import discretized_gaussian_log_likelihood
-from improved_diffusion.util.losses import normal_kl
-from improved_diffusion.util.nn import mean_flat
+from mtg_ml.framework._improved_diffusion._util.losses import discretized_gaussian_log_likelihood
+from mtg_ml.framework._improved_diffusion._util.losses import normal_kl
+from mtg_ml.framework._improved_diffusion._util.nn import mean_flat
 
 
 # ========================================================================= #

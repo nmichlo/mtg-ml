@@ -8,7 +8,7 @@ from typing import Tuple
 import numpy as np
 import torch
 
-from improved_diffusion.framework import IDDPM
+from mtg_ml.framework._improved_diffusion._framework import IDDPM
 from mtg_ml.util.ptl import VisualiseCallbackBase
 
 

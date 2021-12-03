@@ -1,7 +1,7 @@
 import numpy as np
 import torch as th
 
-from improved_diffusion.util.gaussian_diffusion import GaussianDiffusion
+from mtg_ml.framework._improved_diffusion._util.gaussian_diffusion import GaussianDiffusion
 
 
 # ========================================================================= #

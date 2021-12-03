@@ -8,18 +8,18 @@ import torch
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from torch.optim import AdamW
 
-from improved_diffusion.util.lr_schedule import OptimStepScheduleLinear
+from mtg_ml.framework._improved_diffusion._util.lr_schedule import OptimStepScheduleLinear
 from mtg_ml.util.func import instantiate_required
 from mtg_ml.util.ptl import MlSystem
 
-from improved_diffusion.util.gaussian_diffusion import GaussianDiffusion
-from improved_diffusion.util.resample import LossAwareSampler
-from improved_diffusion.util.resample import ScheduleSampler
-from improved_diffusion.util.factory import create_diffusion_and_sampler
-from improved_diffusion.util.factory import create_model
-from improved_diffusion.util.factory import DiffusionAndSampleCfg
-from improved_diffusion.util.factory import ImageModelCfg
-from improved_diffusion.util.factory import SrModelCfg
+from mtg_ml.framework._improved_diffusion._util.gaussian_diffusion import GaussianDiffusion
+from mtg_ml.framework._improved_diffusion._util.resample import LossAwareSampler
+from mtg_ml.framework._improved_diffusion._util.resample import ScheduleSampler
+from mtg_ml.framework._improved_diffusion._util.factory import create_diffusion_and_sampler
+from mtg_ml.framework._improved_diffusion._util.factory import create_model
+from mtg_ml.framework._improved_diffusion._util.factory import DiffusionAndSampleCfg
+from mtg_ml.framework._improved_diffusion._util.factory import ImageModelCfg
+from mtg_ml.framework._improved_diffusion._util.factory import SrModelCfg
 
 
 # ========================================================================= #

@@ -6,14 +6,14 @@ from typing import Union
 
 import numpy as np
 
-from improved_diffusion.util import gaussian_diffusion as gd
-from improved_diffusion.util.resample import LossSecondMomentResampler
-from improved_diffusion.util.resample import ScheduleSampler
-from improved_diffusion.util.resample import UniformSampler
-from improved_diffusion.util.respace import space_timesteps
-from improved_diffusion.util.respace import SpacedDiffusion
-from improved_diffusion.util.unet import SuperResModel
-from improved_diffusion.util.unet import UNetModel
+from mtg_ml.framework._improved_diffusion._util import gaussian_diffusion as gd
+from mtg_ml.framework._improved_diffusion._util.resample import LossSecondMomentResampler
+from mtg_ml.framework._improved_diffusion._util.resample import ScheduleSampler
+from mtg_ml.framework._improved_diffusion._util.resample import UniformSampler
+from mtg_ml.framework._improved_diffusion._util.respace import space_timesteps
+from mtg_ml.framework._improved_diffusion._util.respace import SpacedDiffusion
+from mtg_ml.framework._improved_diffusion._util.unet import SuperResModel
+from mtg_ml.framework._improved_diffusion._util.unet import UNetModel
 
 
 # ========================================================================= #
@@ -166,7 +166,7 @@ def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
         beta_end = scale * 0.02
         return np.linspace(beta_start, beta_end, num_diffusion_timesteps, dtype=np.float64)
     elif schedule_name == "cosine":
-        from improved_diffusion.util.gaussian_diffusion import betas_for_alpha_bar
+        from mtg_ml.framework._improved_diffusion._util.gaussian_diffusion import betas_for_alpha_bar
         return betas_for_alpha_bar(num_diffusion_timesteps, lambda t: math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2)
     else:
         raise NotImplementedError(f"unknown beta schedule: {schedule_name}")

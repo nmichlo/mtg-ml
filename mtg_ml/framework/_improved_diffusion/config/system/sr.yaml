@@ -1,6 +1,6 @@
 
 system_cls:
-  _target_: improved_diffusion.framework.IDDPM
+  _target_: mtg_ml.framework._improved_diffusion.IDDPM
 
   lr: 1e-4,
   lr_anneal_steps: NULL
@@ -8,7 +8,7 @@ system_cls:
   ewm_rate: 0.9999
 
   cfg_model:
-    _target_: improved_diffusion.util.factory.SrModelCfg
+    _target_: mtg_ml.framework._improved_diffusion.SrModelCfg
     # both
     learn_sigma: False
     # model
@@ -25,7 +25,7 @@ system_cls:
     use_scale_shift_norm: True
 
   cfg_diffusion_and_sample:
-    _target_: improved_diffusion.script_util.DiffusionAndSampleCfg
+    _target_: mtg_ml.framework._improved_diffusion.DiffusionAndSampleCfg
     # both
     learn_sigma: False
     # diffusion
