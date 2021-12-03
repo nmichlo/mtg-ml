@@ -1,23 +1,14 @@
-from abc import ABC, abstractmethod
+from abc import ABC
+from abc import abstractmethod
 
 import numpy as np
 import torch as th
 import torch.distributed as dist
 
 
-def create_named_schedule_sampler(name: str, num_timesteps: int):
-    """
-    Create a ScheduleSampler from a library of pre-defined samplers.
-
-    :param name: the name of the sampler.
-    :param diffusion: the diffusion object to sample for.
-    """
-    if name == "uniform":
-        return UniformSampler(num_timesteps=num_timesteps)
-    elif name == "loss-second-moment":
-        return LossSecondMomentResampler(num_timesteps=num_timesteps)
-    else:
-        raise NotImplementedError(f"unknown schedule sampler: {name}")
+# ========================================================================= #
+# Schedule Sampler                                                          #
+# ========================================================================= #
 
 
 class ScheduleSampler(ABC):
@@ -150,3 +141,8 @@ class LossSecondMomentResampler(LossAwareSampler):
 
     def _warmed_up(self):
         return (self._loss_counts == self.history_per_term).all()
+
+
+# ========================================================================= #
+# END                                                                       #
+# ========================================================================= #

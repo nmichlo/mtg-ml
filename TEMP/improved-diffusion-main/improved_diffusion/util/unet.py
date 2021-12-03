@@ -1,6 +1,5 @@
-from abc import abstractmethod
-
 import math
+from abc import abstractmethod
 from typing import Optional
 from typing import Tuple
 
@@ -9,16 +8,20 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .nn import (
-    SiLU,
-    conv_nd,
-    linear,
-    avg_pool_nd,
-    zero_module,
-    normalization,
-    timestep_embedding,
-    checkpoint,
-)
+from improved_diffusion.util.nn import avg_pool_nd
+from improved_diffusion.util.nn import checkpoint
+from improved_diffusion.util.nn import conv_nd
+from improved_diffusion.util.nn import linear
+from improved_diffusion.util.nn import normalization
+from improved_diffusion.util.nn import SiLU
+from improved_diffusion.util.nn import timestep_embedding
+from improved_diffusion.util.nn import zero_module
+
+
+# ========================================================================= #
+# Components                                                                #
+# ========================================================================= #
+
 
 
 class TimestepBlock(nn.Module):
@@ -275,6 +278,11 @@ class QKVAttention(nn.Module):
         model.total_ops += th.DoubleTensor([matmul_ops])
 
 
+# ========================================================================= #
+# UNET                                                                      #
+# ========================================================================= #
+
+
 class UNetModel(nn.Module):
     """
     The full UNet model with attention and timestep embedding.
@@ -507,6 +515,11 @@ class UNetModel(nn.Module):
         return result
 
 
+# ========================================================================= #
+# Super Res                                                                 #
+# ========================================================================= #
+
+
 class SuperResModel(UNetModel):
     """
     A UNetModel that performs super-resolution.
@@ -528,3 +541,8 @@ class SuperResModel(UNetModel):
         upsampled = F.interpolate(low_res, (new_height, new_width), mode="bilinear")
         x = th.cat([x, upsampled], dim=1)
         return super().get_feature_vectors(x, timesteps, **kwargs)
+
+
+# ========================================================================= #
+# END                                                                       #
+# ========================================================================= #

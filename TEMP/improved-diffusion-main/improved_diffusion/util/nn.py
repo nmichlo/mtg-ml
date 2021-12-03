@@ -9,6 +9,11 @@ import torch.nn
 import torch.nn as nn
 
 
+# ========================================================================= #
+# Components                                                                #
+# ========================================================================= #
+
+
 class SiLU(torch.nn.SiLU):
     def __init__(self):
         super().__init__(inplace=False)
@@ -87,6 +92,11 @@ def normalization(channels):
     return GroupNorm32(32, channels)
 
 
+# ========================================================================= #
+# Timestep                                                                  #
+# ========================================================================= #
+
+
 def timestep_embedding(timesteps, dim, max_period=10000):
     """
     Create sinusoidal timestep embeddings.
@@ -106,6 +116,11 @@ def timestep_embedding(timesteps, dim, max_period=10000):
     if dim % 2:
         embedding = th.cat([embedding, th.zeros_like(embedding[:, :1])], dim=-1)
     return embedding
+
+
+# ========================================================================= #
+# Checkpoint                                                                #
+# ========================================================================= #
 
 
 def checkpoint(func, inputs, params, flag):
@@ -155,3 +170,8 @@ class CheckpointFunction(th.autograd.Function):
         del ctx.input_params
         del output_tensors
         return (None, None) + input_grads
+
+
+# ========================================================================= #
+# END                                                                       #
+# ========================================================================= #

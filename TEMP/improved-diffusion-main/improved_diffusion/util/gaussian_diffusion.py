@@ -1,45 +1,25 @@
 """
+improved_diffusion/gaussian_diffusion.py
+
 This code started out as a PyTorch port of Ho et al's diffusion models:
 https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py
 
 Docstrings have been added, as well as DDIM sampling and a new collection of beta schedules.
 """
 
-import enum
-import math
 
 import numpy as np
 import torch as th
+import enum
 
-from .nn import mean_flat
-from .losses import normal_kl, discretized_gaussian_log_likelihood
+from improved_diffusion.util.losses import discretized_gaussian_log_likelihood
+from improved_diffusion.util.losses import normal_kl
+from improved_diffusion.util.nn import mean_flat
 
 
-def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
-    """
-    Get a pre-defined beta schedule for the given name.
-
-    The beta schedule library consists of beta schedules which remain similar
-    in the limit of num_diffusion_timesteps.
-    Beta schedules may be added, but should not be removed or changed once
-    they are committed to maintain backwards compatibility.
-    """
-    if schedule_name == "linear":
-        # Linear schedule from Ho et al, extended to work for any number of
-        # diffusion steps.
-        scale = 1000 / num_diffusion_timesteps
-        beta_start = scale * 0.0001
-        beta_end = scale * 0.02
-        return np.linspace(
-            beta_start, beta_end, num_diffusion_timesteps, dtype=np.float64
-        )
-    elif schedule_name == "cosine":
-        return betas_for_alpha_bar(
-            num_diffusion_timesteps,
-            lambda t: math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2,
-        )
-    else:
-        raise NotImplementedError(f"unknown beta schedule: {schedule_name}")
+# ========================================================================= #
+# Diffusion                                                                 #
+# ========================================================================= #
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
@@ -94,6 +74,11 @@ class LossType(enum.Enum):
 
     def is_vb(self):
         return self == LossType.KL or self == LossType.RESCALED_KL
+
+
+# ========================================================================= #
+# Guassian Diffusion                                                        #
+# ========================================================================= #
 
 
 class GaussianDiffusion:
@@ -812,6 +797,11 @@ class GaussianDiffusion:
         }
 
 
+# ========================================================================= #
+# Helper                                                                    #
+# ========================================================================= #
+
+
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
     """
     Extract values from a 1-D numpy array for a batch of indices.
@@ -826,3 +816,8 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
     while len(res.shape) < len(broadcast_shape):
         res = res[..., None]
     return res.expand(broadcast_shape)
+
+
+# ========================================================================= #
+# END                                                                       #
+# ========================================================================= #

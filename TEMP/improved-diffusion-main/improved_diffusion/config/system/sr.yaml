@@ -1,6 +1,6 @@
 
 system_cls:
-  _target_: improved_diffusion.train_util.IDDPM
+  _target_: improved_diffusion.framework.IDDPM
 
   lr: 1e-4,
   lr_anneal_steps: NULL
@@ -8,7 +8,7 @@ system_cls:
   ewm_rate: 0.9999
 
   cfg_model:
-    _target_: improved_diffusion.script_util.SrModelCfg
+    _target_: improved_diffusion.util.factory.SrModelCfg
     # both
     learn_sigma: False
     # model

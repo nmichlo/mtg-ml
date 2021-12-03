@@ -1,7 +1,12 @@
 import numpy as np
 import torch as th
 
-from .gaussian_diffusion import GaussianDiffusion
+from improved_diffusion.util.gaussian_diffusion import GaussianDiffusion
+
+
+# ========================================================================= #
+# Spaced Diffusion                                                          #
+# ========================================================================= #
 
 
 def space_timesteps(num_timesteps, section_counts):
@@ -120,3 +125,8 @@ class _WrappedModel:
         if self.rescale_timesteps:
             new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
         return self.model(x, new_ts, **kwargs)
+
+
+# ========================================================================= #
+# END                                                                       #
+# ========================================================================= #

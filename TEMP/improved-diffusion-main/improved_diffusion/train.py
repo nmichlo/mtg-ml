@@ -20,7 +20,7 @@ def run_training(cfg):
 
 if __name__ == "__main__":
 
-    CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
+    CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config')
     CONFIG_NAME = 'config'
 
     @hydra.main(CONFIG_PATH, CONFIG_NAME)
