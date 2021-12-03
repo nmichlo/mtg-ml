@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from disent.util.math.random import random_choice_prng
-from torch.optim import AdamW
+from torch.optim import RAdam
 
 from mtg_ml.framework._improved_diffusion._util.unet_basic import UNetAttentionModel
 from mtg_ml.util.ptl import MlSystem
@@ -23,82 +23,57 @@ class Buffer(object):
         self,
         buffer_size: int = 1024*4,
         img_size: int = 64,
+        latent_chn: int = 3,
+        device='cpu',
     ):
         self._buffer_size = buffer_size
         self._img_size = img_size
+        # default device
+        self._device = device
         # filled values
-        self._filled_mask = torch.zeros(buffer_size, device='cpu', dtype=torch.bool)
+        self._filled_mask = torch.zeros(buffer_size, device=self._device, dtype=torch.bool)
+        self._iters       = torch.zeros(buffer_size, device=self._device, dtype=torch.int32)
         # buffers
-        self._inputs = torch.zeros(buffer_size, 6, img_size, img_size, device='cpu', dtype=torch.float32)
-        self._targets = torch.zeros(buffer_size, 3, img_size, img_size, device='cpu', dtype=torch.float32)
+        self._inputs = torch.zeros(buffer_size, 3 + latent_chn, img_size, img_size, device=self._device, dtype=torch.float32)
+        self._targets = torch.zeros(buffer_size, 3, img_size, img_size, device=self._device, dtype=torch.float32)
+
+    # def to(self, device):
+    #     self._filled_mask = self._filled_mask.to(device=device)
+    #     self._iters = self._iters.to(device=device)
+    #     self._inputs = self._inputs.to(device=device)
+    #     self._targets = self._targets.to(device=device)
 
     def sample_idxs(self, n: int):
-        return random_choice_prng(self._buffer_size, size=n, replace=False)
+        idxs = random_choice_prng(self._buffer_size, size=n, replace=False)
+        return torch.from_numpy(idxs).to(device=self._device)
 
-    def _get_valid(self, idxs, device=None):
-        # only get indices that are filled
-        idxs = idxs[self._filled_mask[idxs]]
-        # get values
-        inputs = self._inputs[idxs]
-        targets = self._targets[idxs]
-        # move to device
-        if device is not None:
-            inputs = inputs.to(device=device)
-            targets = targets.to(device=device)
-        # done!
-        return idxs, inputs, targets
-
-    def cat_valid_samples(self, n_extra: int, inputs: torch.Tensor, targets: torch.Tensor, device=None):
+    def cat_valid_samples(self, n_extra: int, new_inputs: torch.Tensor, new_targets: torch.Tensor):
+        n_new = len(new_inputs)
         # checks
-        assert len(inputs) == len(targets)
-        assert inputs.shape[1:] == self._inputs.shape[1:]
-        assert targets.shape[1:] == self._targets.shape[1:]
-        # sample idxs
-        n = len(inputs)
-        idxs = self.sample_idxs(len(inputs) + n_extra)
-        # get missing
-        extra_idxs = idxs[n:]
-        valid_idxs, valid_inputs, valid_targets = self._get_valid(extra_idxs, device=device)
+        assert len(new_inputs) == len(new_targets)
+        assert new_inputs.shape[1:] == self._inputs.shape[1:]
+        assert new_targets.shape[1:] == self._targets.shape[1:]
+        # sample idxs & split
+        _idxs = self.sample_idxs(n_new + n_extra)
+        new_idxs, extra_idxs   = _idxs[:n_new], _idxs[n_new:]
+        # get valid extras
+        extra_idxs = extra_idxs[self._filled_mask[extra_idxs]]
+        extra_iters = self._iters[extra_idxs]
+        extra_inputs = self._inputs[extra_idxs]
+        extra_targets = self._targets[extra_idxs]
         # concatenate
-        cat_inputs = torch.cat([inputs, valid_inputs], dim=0)
-        cat_targets = torch.cat([targets, valid_targets], dim=0)
-        cat_idxs = np.concatenate([idxs[:n], valid_idxs], axis=0)
+        idxs = torch.cat([new_idxs, extra_idxs], dim=0)
+        iters = torch.cat([torch.zeros(n_new, dtype=torch.int32, device=self._device), extra_iters],   dim=0)
+        inputs = torch.cat([new_inputs, extra_inputs],  dim=0)
+        targets = torch.cat([new_targets, extra_targets], dim=0)
         # done!
-        return cat_idxs, cat_inputs, cat_targets
+        return idxs, iters, inputs, targets
 
-    def overwrite(self, idxs, inputs: torch.Tensor, targets: torch.Tensor):
-        self._inputs[idxs] = inputs.detach().cpu()
-        self._targets[idxs] = targets.detach().cpu()
+    def overwrite(self, idxs, iters, inputs: torch.Tensor, targets: torch.Tensor):
+        self._iters[idxs] = iters.detach().to(device=self._device)
+        self._inputs[idxs] = inputs.detach().to(device=self._device)
+        self._targets[idxs] = targets.detach().to(device=self._device)
         self._filled_mask[idxs] = True
-
-    # def store(self, inputs: torch.Tensor, targets: torch.Tensor):
-    #     # check sizes
-    #     assert len(inputs) == len(targets)
-    #     assert inputs.shape[1:] == self._inputs[1:]
-    #     assert targets.shape[1:] == self._targets[1:]
-    #     # move to cpu
-    #     inputs = inputs.detach().cpu()
-    #     targets = targets.detach().cpu()
-    #     # store everything
-    #     if self._filled < self._buffer_size:
-    #         n = min(len(inputs), self._buffer_size - self._filled)
-    #         # insert elems
-    #         self._inputs[self._filled:self._filled+n] = inputs
-    #         self._targets[self._filled:self._filled+n] = targets
-    #         # update filled
-    #         self._filled_mask[self._filled:self._filled+n] = True
-    #         self._filled += n
-    #         # If batch is not a multiple of the buffer size, then we miss elements here.
-    #         # This probably wont affect anything though.
-    #         return
-    #     # randomly replace
-    #     idxs = random_choice_prng(self._buffer_size, size=len(inputs), replace=False)
-    #     self._inputs[idxs] = inputs
-    #     self._targets[idxs] = targets
-
-    # def try_sample(self, n: int, device=None):
-    #     # only get indices that are filled
-    #     return self.get_valid(self.sample_idxs(n), device=device)
 
 
 # ========================================================================= #
@@ -118,6 +93,7 @@ class BasicDenoiser(MlSystem):
             model_heads: int = 2,
             model_channel_multipliers: Sequence[int] = (1, 2, 3, 4),
             model_attention_resolutions: Sequence[int] = (16, 8),
+            latent_chn: int = 3,
         # optimizer
             lr: float = 1e-4,
             weight_decay: float = 0.0,
@@ -132,9 +108,9 @@ class BasicDenoiser(MlSystem):
         self.save_hyperparameters()
         # instantiate configs
         self._model = UNetAttentionModel(
-            in_channels=6,
+            in_channels=3 + self.hparams.latent_chn,
             model_channels=self.hparams.model_channels,
-            out_channels=6,
+            out_channels=3 + self.hparams.latent_chn,
             num_res_blocks=self.hparams.model_res_blocks,
             attention_resolutions=tuple(self.hparams.img_size // int(res) for res in self.hparams.model_attention_resolutions),
             dropout=0.0,
@@ -144,28 +120,27 @@ class BasicDenoiser(MlSystem):
             num_heads_upsample=-1,
         )
         # make a buffer
-        self._buffer = Buffer(
-            buffer_size=self.hparams.buffer_size,
-            img_size=self.hparams.img_size,
-        )
+        self._buffer: Buffer = None
 
     def configure_optimizers(self):
-        return AdamW(self._model.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        # return AdamW(self._model.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        return RAdam(self._model.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
 
     def extract_rgb(self, outputs: torch.Tensor):
         assert outputs.ndim == 4
-        assert outputs.shape[1] == 6
+        assert outputs.shape[1] == 3 + self.hparams.latent_chn
         return outputs[:, :3, :, :]
 
     def extract_latents(self, outputs: torch.Tensor):
         assert outputs.ndim == 4
-        assert outputs.shape[1] == 6
+        assert outputs.shape[1] == 3 + self.hparams.latent_chn
         return outputs[:, 3:, :, :]
 
     def pad_rgb(self, targets: torch.Tensor):
         assert targets.ndim == 4
         assert targets.shape[1] == 3
-        return torch.cat([targets, torch.zeros_like(targets, device=targets.device)], dim=1)
+        n, c, h, w = targets.shape
+        return torch.cat([targets, torch.zeros(n, self.hparams.latent_chn, h, w, dtype=torch.float32, device=targets.device)], dim=1)
 
     def _make_training_inputs(self, targets: torch.Tensor):
         assert targets.ndim == 4
@@ -178,26 +153,46 @@ class BasicDenoiser(MlSystem):
         # done!
         return self.pad_rgb(content)
 
+    def on_train_start(self) -> None:
+        self._buffer = Buffer(
+            buffer_size=self.hparams.buffer_size,
+            img_size=self.hparams.img_size,
+            latent_chn=self.hparams.latent_chn,
+            device=self.device
+        )
+
     def training_step(self, batch, batch_idx: int, *args, **kwargs):
         # make starting organisms
         inputs = self._make_training_inputs(batch)
         # sample from buffer
-        idxs, inputs, targets = self._buffer.cat_valid_samples(self.hparams.buffer_samples, inputs, batch, device=self.device)
+        idxs, iters, inputs, targets = self._buffer.cat_valid_samples(self.hparams.buffer_samples, inputs, batch)
+        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
         # feed forward
         for i in range(self.hparams.grad_steps):
             inputs = self._model(inputs)
-        # update the buffer
-        self._buffer.overwrite(idxs, inputs, targets)
+        # update iters
+        iters = iters + self.hparams.grad_steps
+        print(iters)
+        loss_scales = torch.clip(iters.to(torch.float32) / self.hparams.denoise_steps, 0, 1)
         # compute the loss
-        loss = F.mse_loss(self.extract_rgb(inputs), targets, reduction='mean')
+        loss = F.mse_loss(self.extract_rgb(inputs), targets, reduction='none').mean(dim=(-3, -2, -1))
+        loss = (loss * loss_scales).mean()
+        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
+        # update the buffer
+        self._buffer.overwrite(idxs, iters, inputs, targets)
         # log values
-        self.log('samp.', len(idxs) - self.hparams.buffer_samples, prog_bar=True)
+        self.log('s', len(idxs) - len(batch), prog_bar=True)
+        self.log('it', float(loss_scales.mean()), prog_bar=True)
+        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
         # done!
         return loss
 
+    def on_train_end(self):
+        self._buffer = None
+
     def forward(self, x, steps: int = None, pad_rgb: Optional[bool] = None, extract_rgb: bool = True):
         assert x.ndim == 4
-        assert x.shape[1] in (3, 6)
+        assert x.shape[1] in (3, 3 + self.hparams.latent_chn)
         # get defaults
         if steps is None:
             steps = self.hparams.denoise_steps
@@ -228,9 +223,9 @@ class BasicDenoiser(MlSystem):
         return {
             'zerod_xs': self.extract_rgb(xs_zerod.detach()).cpu(),
             'zerod_rs': self.extract_rgb(rs_zerod.detach()).cpu(),
-            'zerod_zs': self.extract_latents(rs_zerod.detach()).cpu(),
+            # 'zerod_zs': self.extract_latents(rs_zerod.detach()).cpu(),
             #
             'noise_xs': self.extract_rgb(xs_noise.detach()).cpu(),
             'noise_rs': self.extract_rgb(rs_noise.detach()).cpu(),
-            'noise_zs': self.extract_latents(rs_noise.detach()).cpu(),
+            # 'noise_zs': self.extract_latents(rs_noise.detach()).cpu(),
         }
