@@ -6,16 +6,154 @@ system_cls:
   img_size: ${data.meta.img_size}
   # model
   model_channels: 64
-  model_res_blocks: 2
-  model_heads: 4
+  model_res_blocks: 3
+  model_heads: 2
   model_channel_multipliers: [1, 2, 3, 4]
   model_attention_resolutions: [16, 8]
+  latent_chn: 0
   # optimizer
-  lr: 1e-4
-  weight_decay: 1e-7
+  lr: 2e-4
+  weight_decay: 0.0
   # sampling & training
-  denoise_steps: 128
-  grad_steps: 2
+  denoise_steps: 16
+  grad_steps: 1
   # buffer
-  buffer_size: 4096  # 4096 / 16 == 256
-  buffer_samples: 16
+  buffer_size: 1024
+  buffer_samples: 60
+
+# batch_size: 4
+
+# FORMULA:
+  # denoise_steps = grad_steps * (1 + buffer_samples / batch_size)
+  # buffer_samples = ((denoise_steps / grad_steps) - 1) * batch_size
+
+# defaults:
+#  - data: mtg64
+#  - framework: basic_denoiser
+#  - run_location: default
+#
+#settings:
+#  job:
+#    seed: 777
+#  data:
+#    batch_size: 4
+#
+#trainer:
+#  _target_: pytorch_lightning.Trainer
+#  gpus: [0]
+#
+#  # https://pytorch-lightning.readthedocs.io/en/latest/advanced/training_tricks.html
+#  gradient_clip_val: 0.5
+#  # gradient_clip_algorithm: 'value'  # value,norm
+#  accumulate_grad_batches: 4   # Accumulate gradients over multiple batches before backward pass. Like a larger batch.
+#
+#  #  num_nodes: 1
+##  strategy: ddp_spawn
+#  max_steps: 1000000
+#  max_epochs: 1000000
+#  callbacks:
+#    - _target_: mtg_ml.util.ptl.VisualiseCallback
+#      name: 'vis'
+#      input_batch: 64
+#      every_n_steps: 5000
+#      log_local: FALSE
+#      log_wandb: FALSE
+#      save_dir: .
+#      mean_std:
+#        - ${data.meta.img_mean}
+#        - ${data.meta.img_std}
+#      figwidth: 15
+#    - _target_: pytorch_lightning.callbacks.ModelCheckpoint
+#      dirpath: .
+#      monitor: NULL
+#      every_n_train_steps: 10000
+#      verbose: True
+#      save_top_k: -1
+
+
+# GOOD: but lr probably too high, and batch size too small.
+#      -- maybe also decrease size of buffer to minimum
+#      -- add grad clipping?
+#      -- add batching?
+#      -- way to accumulate grads over entire batch run? or multiple denoise steps?
+#
+# ------------------------------------------------------------------------------------------------ #
+#| data:                                                                                            |
+#|   name: mtg64                                                                                    |
+#|   module_cls:                                                                                    |
+#|     _target_: mtg_ml.util.ptl.Hdf5DataModule                                                     |
+#|     h5_path: ${oc.env:HOME}/workspace/playground/mtg-dataset/data/mtg_default-                   |
+#| cards-20211128100240_normal_65903x64x46x3_c4.h5                                                  |
+#|     h5_dataset_name: data                                                                        |
+#|     batch_size: ${settings.data.batch_size}                                                      |
+#|     val_ratio: 0.1                                                                               |
+#|     num_workers: 4                                                                               |
+#|     in_memory: false                                                                             |
+#|     transform:                                                                                   |
+#|       _target_: mtg_ml.util.transforms.ToStandardF32                                             |
+#|       size: null                                                                                 |
+#|       mean: ${data.meta.img_mean}                                                                |
+#|       std: ${data.meta.img_std}                                                                  |
+#|       pad_to_square: true                                                                        |
+#|   meta:                                                                                          |
+#|     x_shape:                                                                                     |
+#|     - 3                                                                                          |
+#|     - 64                                                                                         |
+#|     - 64                                                                                         |
+#|     img_size: 64                                                                                 |
+#|     img_chn: 3                                                                                   |
+#|     img_mean: 0.5                                                                                |
+#|     img_std: 0.5                                                                                 |
+#| framework:                                                                                       |
+#|   name: basic_denoiser                                                                           |
+#|   system_cls:                                                                                    |
+#|     _target_: mtg_ml.framework.BasicDenoiser                                                     |
+#|     img_size: ${data.meta.img_size}                                                              |
+#|     model_channels: 64                                                                           |
+#|     model_res_blocks: 3                                                                          |
+#|     model_heads: 2                                                                               |
+#|     model_channel_multipliers:                                                                   |
+#|     - 1                                                                                          |
+#|     - 2                                                                                          |
+#|     - 3                                                                                          |
+#|     - 4                                                                                          |
+#|     model_attention_resolutions:                                                                 |
+#|     - 16                                                                                         |
+#|     - 8                                                                                          |
+#|     latent_chn: 0                                                                                |
+#|     lr: 0.0001                                                                                   |
+#|     weight_decay: 1.0e-07                                                                        |
+#|     denoise_steps: 16                                                                            |
+#|     grad_steps: 1                                                                                |
+#|     buffer_size: 1024                                                                            |
+#|     buffer_samples: 60                                                                           |
+#| settings:                                                                                        |
+#|   job:                                                                                           |
+#|     seed: 777                                                                                    |
+#|   data:                                                                                          |
+#|     batch_size: 4                                                                                |
+#| trainer:                                                                                         |
+#|   _target_: pytorch_lightning.Trainer                                                            |
+#|   gpus:                                                                                          |
+#|   - 1                                                                                            |
+#|   max_steps: 1000000                                                                             |
+#|   max_epochs: 1000000                                                                            |
+#|   callbacks:                                                                                     |
+#|   - _target_: mtg_ml.util.ptl.VisualiseCallback                                                  |
+#|     name: vis                                                                                    |
+#|     input_batch: 64                                                                              |
+#|     every_n_steps: 2500                                                                          |
+#|     log_local: false                                                                             |
+#|     log_wandb: false                                                                             |
+#|     save_dir: .                                                                                  |
+#|     mean_std:                                                                                    |
+#|     - ${data.meta.img_mean}                                                                      |
+#|     - ${data.meta.img_std}                                                                       |
+#|     figwidth: 15                                                                                 |
+#|   - _target_: pytorch_lightning.callbacks.ModelCheckpoint                                        |
+#|     dirpath: .                                                                                   |
+#|     monitor: null                                                                                |
+#|     every_n_train_steps: 5000                                                                    |
+#|     verbose: true                                                                                |
+#|     save_top_k: -1                                                                               |
+## ------------------------------------------------------------------------------------------------ #

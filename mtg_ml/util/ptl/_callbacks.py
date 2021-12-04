@@ -10,6 +10,7 @@ from typing import Union
 import numpy as np
 import pytorch_lightning as pl
 import torch
+from disent.util.seeds import TempNumpySeed
 from disent.util.visualize.vis_util import make_image_grid
 from pytorch_lightning.trainer.supporters import CombinedDataset
 from pytorch_lightning.utilities import rank_zero_only
@@ -170,10 +171,13 @@ class VisualiseCallback(VisualiseCallbackBase):
         save_dir: Optional[str] = None,
         mean_std: Optional[Tuple[float, float]] = None,
         figwidth: float = 15,
+        # seed
+        seed: Optional[int] = 42,
     ):
         super().__init__(name=name, every_n_steps=every_n_steps, log_local=log_local, log_wandb=log_wandb, save_dir=save_dir, mean_std=mean_std, figwidth=figwidth)
         assert isinstance(input_batch, (torch.Tensor, int, Sequence)), f'input_batch should be a torch.Tensor batch or integer representing the number of samples, or a sequence of the indices of the samples themselves, got: {repr(input_batch)}'
         self._input_batch = input_batch
+        self._seed = seed
 
     def _produce_images(self, trainer: 'pl.Trainer', pl_module: 'pl.LightningModule') -> Dict[str, np.ndarray]:
         # get inputs
@@ -212,7 +216,13 @@ class VisualiseCallback(VisualiseCallbackBase):
             if isinstance(dataset, IterableDataset):
                 warnings.warn('IterableDataset`s are not supported!')
                 return None
-            indices = np.random.randint(0, len(dataset), size=self._input_batch) if isinstance(self._input_batch, int) else self._input_batch
+            # get the observations
+            if isinstance(self._input_batch, int):
+                with TempNumpySeed(self._seed):
+                    indices = np.random.randint(0, len(dataset), size=self._input_batch)
+            else:
+                indices = self._input_batch
+            # stack everything into a batch
             xs = torch.stack([dataset[i] for i in indices], dim=0)
             assert isinstance(xs, torch.Tensor)
             assert xs.ndim == 4
