@@ -1,6 +1,6 @@
 defaults:
-  - data: mtg64
-  - framework: basic_denoiser
+  - data: mtg256
+  - framework: sivae
   - run_location: default
 
 settings:
@@ -20,7 +20,7 @@ trainer:
     - _target_: mtg_ml.util.ptl.VisualiseCallback
       name: 'vis'
       input_batch: 64
-      every_n_steps: 1500
+      every_n_steps: 1000
       log_local: FALSE
       log_wandb: FALSE
       save_dir: .

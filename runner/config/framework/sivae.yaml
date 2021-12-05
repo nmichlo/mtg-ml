@@ -10,13 +10,13 @@ system_cls:
   recon_loss: "mse"
   # loss scaling
   beta_kl: 1.0
-  beta_rec: 1.0
-  beta_neg: 256.0
+  beta_rec: 1.0  # don't really adjust this
+  beta_neg: 1024.0
   gamma_r: 1e-8
   # dataset_settings:
   img_size: ${data.meta.img_size}
   img_chn: ${data.meta.img_chn}
-  conv_channels: [32, 128, 256, 512, 512]
+  conv_channels: [32, 64, 128, 256, 512, 512]
   # unimplemented:
   # exit_on_negative_diff: bool = False,  # TODO: implement
   # training_measure_fid: bool = False,   # TODO: implement

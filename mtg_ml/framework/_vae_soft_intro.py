@@ -4,6 +4,7 @@ https://github.com/taldatech/soft-intro-vae-pytorch
 """
 
 import dataclasses
+from typing import Dict
 from typing import Tuple
 
 import numpy as np
@@ -203,8 +204,8 @@ class SoftIntroVaeSystem(MlSystem):
         )
 
     def configure_optimizers(self):
-        optimizer_enc = optim.Adam(self.model._encoder.parameters(), lr=self.hparams.lr_enc)
-        optimizer_dec = optim.Adam(self.model._decoder.parameters(), lr=self.hparams.lr_dec)
+        optimizer_enc = optim.AdamW(self.model._encoder.parameters(), lr=self.hparams.lr_enc)  # was Adam
+        optimizer_dec = optim.AdamW(self.model._decoder.parameters(), lr=self.hparams.lr_dec)  # was Adam
         enc_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_enc, milestones=(350,), gamma=0.1)
         dec_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_dec, milestones=(350,), gamma=0.1)
         return [optimizer_enc, optimizer_dec], [enc_scheduler, dec_scheduler]
@@ -215,6 +216,10 @@ class SoftIntroVaeSystem(MlSystem):
 
         # ENCODER TRAINING STEP
         if optimizer_idx == 0:
+            # DO WE REALLY NEED THIS?
+            # for param in self.model._encoder.parameters(): param.requires_grad = True
+            # for param in self.model._decoder.parameters(): param.requires_grad = False
+
             recon_fake = self.model.decode(self.sample_z(len(batch)))
 
             # feed forward
@@ -223,18 +228,18 @@ class SoftIntroVaeSystem(MlSystem):
             rec_fake, z_fake, posterior_fake, prior_fake = self.model.forward_train(recon_fake.detach())
 
             # reconstruction losses
-            loss_real = self._loss(rec_real, batch, reduction="mean")
+            loss_real = torch.flatten(self._loss(rec_real, batch,      reduction="none"), start_dim=1).sum(dim=-1).mean(dim=0)
             loss_rec  = torch.flatten(self._loss(rec_rec,  rec_real,   reduction='none'), start_dim=1).sum(dim=-1)
             loss_fake = torch.flatten(self._loss(rec_fake, recon_fake, reduction='none'), start_dim=1).sum(dim=-1)
 
             # kl divergences
-            kl_real = kl_div(posterior_real, prior_real).mean()
-            kl_rec  = kl_div(posterior_rec,  prior_rec).sum(dim=-1)
+            kl_real = kl_div(posterior_real, prior_real).sum(dim=-1).mean()
+            kl_rec  = kl_div(posterior_rec,  prior_rec) .sum(dim=-1)
             kl_fake = kl_div(posterior_fake, prior_fake).sum(dim=-1)
 
             # exp elbo
-            expelbo_rec  = (-2 * self._scale * (self.hparams.beta_rec * loss_rec  + self.hparams.beta_neg * kl_rec)).exp().mean()
-            expelbo_fake = (-2 * self._scale * (self.hparams.beta_rec * loss_fake + self.hparams.beta_neg * kl_fake)).exp().mean()
+            expelbo_rec  = (-2 * self._scale * (self.hparams.beta_rec * loss_rec  + self.hparams.beta_neg * kl_rec)).exp().mean(dim=0)
+            expelbo_fake = (-2 * self._scale * (self.hparams.beta_rec * loss_fake + self.hparams.beta_neg * kl_fake)).exp().mean(dim=0)
 
             # compute final loss
             elbo_real = self._scale * (self.hparams.beta_rec * loss_real + self.hparams.beta_kl * kl_real)
@@ -262,22 +267,26 @@ class SoftIntroVaeSystem(MlSystem):
 
         # DECODER TRAINING STEP
         elif optimizer_idx == 1:
+            # DO WE REALLY NEED THIS?
+            # for param in self.model._encoder.parameters(): param.requires_grad = False
+            # for param in self.model._decoder.parameters(): param.requires_grad = True
+
             # this should originally be re-used from the previous step TODO: check which other values should also be reused?
-            recon_fake = self.model.decode(self.sample_z(len(batch)))
+            batch_fake = self.model.decode(self.sample_z(len(batch)))
 
             # feed forward
             rec_real, z_real, posterior_real, prior_real = self.model.forward_train(batch, detach_z=True)
             rec_rec,  z_rec,  posterior_rec,  prior_rec  = self.model.forward_train(rec_real, detach_z=True)
-            rec_fake, z_fake, posterior_fake, prior_fake = self.model.forward_train(recon_fake, detach_z=True)
+            rec_fake, z_fake, posterior_fake, prior_fake = self.model.forward_train(batch_fake, detach_z=True)
 
             # kl divergences
-            loss_real = self._loss(rec_real, batch,               reduction="mean")
-            loss_rec  = self._loss(rec_rec,  rec_real.detach(),   reduction="mean")
-            loss_fake = self._loss(rec_fake, recon_fake.detach(), reduction="mean")
+            loss_real = torch.flatten(self._loss(rec_real, batch,               reduction="none"), start_dim=1).sum(dim=-1).mean(dim=0)
+            loss_rec  = torch.flatten(self._loss(rec_rec,  rec_real.detach(),   reduction="none"), start_dim=1).sum(dim=-1).mean(dim=0)
+            loss_fake = torch.flatten(self._loss(rec_fake, batch_fake.detach(), reduction="none"), start_dim=1).sum(dim=-1).mean(dim=0)
 
             # kl divergences
-            kl_rec  = kl_div(posterior_rec,  prior_rec).mean()
-            kl_fake = kl_div(posterior_fake, prior_fake).mean()
+            kl_rec  = kl_div(posterior_rec,  prior_rec).sum(dim=-1).mean()
+            kl_fake = kl_div(posterior_fake, prior_fake).sum(dim=-1).mean()
 
             loss = self._scale * (
                     self.hparams.beta_rec * loss_real
@@ -299,12 +308,32 @@ class SoftIntroVaeSystem(MlSystem):
         else:
             raise RuntimeError('this should never happen!')
 
-
     def forward(self, x):
         return self.model(x)
 
-    def sample_z(self, batch_size: int):
-        return torch.randn(size=(batch_size, self.hparams.z_size), device=self.device)
+    def sample_z(self, batch_size: int, numpy=False):
+        size = (batch_size, self.hparams.z_size)
+        if numpy:
+            return torch.from_numpy(np.random.randn(*size)).to(dtype=torch.float32, device=self.device)
+        else:
+            return torch.randn(size=size, dtype=torch.float32, device=self.device)
+
+    @torch.no_grad()
+    def visualize_batch(self, xs: torch.Tensor) -> Dict[str, torch.Tensor]:
+        # feed forward
+        xs = xs.to(self.device)
+        xs_recons = self.model.forward(xs)
+
+        # get random samples
+        zs = self.sample_z(len(xs), numpy=True)
+        zs_recons = self.model.decode(zs)
+
+        # save
+        return {
+            'xs': xs.detach().cpu(),
+            'xs_recons': xs_recons.detach().cpu(),
+            'zs_recons': zs_recons.detach().cpu(),
+        }
 
 
 # ========================================================================= #

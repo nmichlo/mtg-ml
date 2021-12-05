@@ -185,11 +185,11 @@ class VisualiseCallback(VisualiseCallbackBase):
         if inp is None:
             return {}
         # generate grid
-        with evaluate_context(pl_module) as eval_module:
+        with evaluate_context(pl_module) as eval_module, TempNumpySeed(self._seed + 7):
             # check if a visualise_batch function is defined which can return multiple batch image tensors
             if hasattr(eval_module, 'visualize_batch'):
                 vis = eval_module.visualize_batch(inp)
-                imgs = {k: self._img_grid_from_batch(batch) for k, batch in vis.items()}
+                imgs = {k: self._img_grid_from_batch(batch.detach().cpu()) for k, batch in vis.items()}
             # otherwise move to correct device & feed forward
             else:
                 inp = inp.to(eval_module.device)
