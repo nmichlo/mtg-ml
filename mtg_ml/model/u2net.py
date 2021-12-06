@@ -210,9 +210,14 @@ FROM: https://github.com/xuebinqin/U-2-Net/blob/master/model/u2net_refactor.py
 MODIFICATIONS:
 - cleaned up for use the mtg_ml
 """
+from dataclasses import dataclass
+from typing import List
+from typing import Optional
+from typing import Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import math
 
 
@@ -221,17 +226,25 @@ import math
 # ========================================================================= #
 
 
-def _upsample_like(x, size):
-    return nn.Upsample(size=size, mode='bilinear', align_corners=False)(x)
+def _upsample_shape(x: torch.Tensor, size):
+    return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
+    # return nn.Upsample(size=size, mode='bilinear', align_corners=False)(x)
 
 
-def _size_map(x, height):
-    # {height: size} for Upsample
-    size = list(x.shape[-2:])
+def _upsample_like(x: torch.Tensor, like: torch.Tensor):
+    return F.interpolate(x, size=like.shape[2:], mode='bilinear', align_corners=False)
+
+
+def _size_map(x: torch.Tensor, height: int, offset: bool = False):
     sizes = {}
-    for h in range(1, height):
+    # recursive
+    size = list(x.shape[-2:])
+    for h in range(0, height-1):
         sizes[h] = size
-        size = [math.ceil(w / 2) for w in size]
+        size = [math.ceil(s / 2) for s in size]
+    # done
+    if offset:
+        return {h+1: s for h, s in sizes.items()}  # old style
     return sizes
 
 
@@ -240,11 +253,16 @@ def _size_map(x, height):
 # ========================================================================= #
 
 
-class REBNCONV(nn.Module):
-    def __init__(self, in_ch=3, out_ch=3, dilate=1):
-        super(REBNCONV, self).__init__()
+class ConvBnReLU(nn.Module):
+    def __init__(
+        self,
+        in_ch: int = 3,
+        out_ch: int = 3,
+        dilate: int = 1,
+    ):
+        super(ConvBnReLU, self).__init__()
 
-        self.conv_s1 = nn.Conv2d(in_ch, out_ch, 3, padding=1 * dilate, dilation=1 * dilate)
+        self.conv_s1 = nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, padding=1 * dilate, dilation=1 * dilate)
         self.bn_s1 = nn.BatchNorm2d(out_ch)
         self.relu_s1 = nn.ReLU(inplace=True)
 
@@ -252,16 +270,24 @@ class REBNCONV(nn.Module):
         return self.relu_s1(self.bn_s1(self.conv_s1(x)))
 
 
-class RSU(nn.Module):
-    def __init__(self, name, height, in_ch, mid_ch, out_ch, dilated=False):
-        super(RSU, self).__init__()
+class Rsu(nn.Module):
+    def __init__(
+        self,
+        name: str,
+        height: int,
+        in_ch: int,
+        mid_ch: int,
+        out_ch: int,
+        dilated: bool = False,
+    ):
+        super(Rsu, self).__init__()
         self.name = name
         self.height = height
         self.dilated = dilated
         self._make_layers(height, in_ch, mid_ch, out_ch, dilated)
 
     def forward(self, x):
-        sizes = _size_map(x, self.height)
+        sizes = _size_map(x, self.height, offset=True)
         x = self.rebnconvin(x)
 
         # U-Net like symmetric encoder-decoder structure
@@ -274,26 +300,26 @@ class RSU(nn.Module):
                     x2 = unet(x1, height + 1)
 
                 x = getattr(self, f'rebnconv{height}d')(torch.cat((x2, x1), 1))
-                return _upsample_like(x, sizes[height - 1]) if not self.dilated and height > 1 else x
+                return _upsample_shape(x, sizes[height - 1]) if not self.dilated and height > 1 else x
             else:
                 return getattr(self, f'rebnconv{height}')(x)
 
         return x + unet(x)
 
     def _make_layers(self, height, in_ch, mid_ch, out_ch, dilated=False):
-        self.add_module('rebnconvin', REBNCONV(in_ch, out_ch))
+        self.add_module('rebnconvin', ConvBnReLU(in_ch, out_ch))
         self.add_module('downsample', nn.MaxPool2d(2, stride=2, ceil_mode=True))
 
-        self.add_module(f'rebnconv1', REBNCONV(out_ch, mid_ch))
-        self.add_module(f'rebnconv1d', REBNCONV(mid_ch * 2, out_ch))
+        self.add_module(f'rebnconv1', ConvBnReLU(out_ch, mid_ch))
+        self.add_module(f'rebnconv1d', ConvBnReLU(mid_ch * 2, out_ch))
 
         for i in range(2, height):
             dilate = 1 if not dilated else 2 ** (i - 1)
-            self.add_module(f'rebnconv{i}', REBNCONV(mid_ch, mid_ch, dilate=dilate))
-            self.add_module(f'rebnconv{i}d', REBNCONV(mid_ch * 2, mid_ch, dilate=dilate))
+            self.add_module(f'rebnconv{i}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
+            self.add_module(f'rebnconv{i}d', ConvBnReLU(mid_ch * 2, mid_ch, dilate=dilate))
 
         dilate = 2 if not dilated else 2 ** (height - 1)
-        self.add_module(f'rebnconv{height}', REBNCONV(mid_ch, mid_ch, dilate=dilate))
+        self.add_module(f'rebnconv{height}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
 
 
 # ========================================================================= #
@@ -301,49 +327,92 @@ class RSU(nn.Module):
 # ========================================================================= #
 
 
-class U2NET(nn.Module):
+@dataclass
+class U2NetLayerCfg:
+    # side layer
+    side_in_chn: Optional[int]
+    # rsu layer
+    rsu_height: int
+    rsu_in_ch: int
+    rsu_mid_ch: int
+    rsu_out_ch: int
+    rsu_dilated: bool = False
+
+    @classmethod
+    def normalise(cls, layer) -> 'U2NetLayerCfg':
+        if isinstance(layer, cls):
+            return layer
+        return cls(**layer)
+
+
+class U2Net(nn.Module):
 
     def __init__(
         self,
-        cfgs: dict,
+        enc_layer_cfgs: List[Union[U2NetLayerCfg, dict]],
+        dec_layer_cfgs: List[Union[U2NetLayerCfg, dict]],
         out_ch: int,
     ):
-        super(U2NET, self).__init__()
+        super(U2Net, self).__init__()
+
+        # normalise configs -- layers should be pass in feed forward order, eg. encoders: 0, 1, 2, 3, 4, 5 and eg. decoders: 4, 3, 2, 1, 0
+        enc_layer_cfgs = [U2NetLayerCfg.normalise(layer) for layer in enc_layer_cfgs]
+        dec_layer_cfgs = [U2NetLayerCfg.normalise(layer) for layer in dec_layer_cfgs][::-1]
+        assert len(enc_layer_cfgs) == len(dec_layer_cfgs) + 1
+
+        # save hparams
         self.out_ch = out_ch
-        self._make_layers(cfgs)
+        self.height = (len(enc_layer_cfgs) + len(dec_layer_cfgs) + 1) // 2
+
+        # layers
+        self.downsample = nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)
+        self.enc_layers = nn.ModuleList()
+        self.dec_layers = nn.ModuleList()
+        self.side_layers = nn.ModuleList()
+        self.outconv = nn.Conv2d(in_channels=int(self.height * self.out_ch), out_channels=self.out_ch, kernel_size=1)
+
+        # make enc dec layers
+        for i, e in enumerate(enc_layer_cfgs): self.enc_layers.append(Rsu(name=f'En_{i+1}', height=e.rsu_height, in_ch=e.rsu_in_ch, mid_ch=e.rsu_mid_ch, out_ch=e.rsu_out_ch, dilated=e.rsu_dilated))
+        for i, d in enumerate(dec_layer_cfgs): self.dec_layers.append(Rsu(name=f'De_{i+1}', height=d.rsu_height, in_ch=d.rsu_in_ch, mid_ch=d.rsu_mid_ch, out_ch=d.rsu_out_ch, dilated=d.rsu_dilated))
+
+        # make side layers -- TODO: infer this automatically without s.side_in_chn
+        for i, s in enumerate(dec_layer_cfgs + [enc_layer_cfgs[-1]]):
+            self.side_layers.append(nn.Conv2d(in_channels=s.side_in_chn, out_channels=self.out_ch, kernel_size=3, padding=1))
+
 
     def forward(self, x):
         sizes = _size_map(x, self.height)
         maps = []  # storage for maps
 
         # side saliency map
-        def unet(x, height=1):
-            if height < 6:
-                x1 = getattr(self, f'stage{height}')(x)
-                x2 = unet(getattr(self, 'downsample')(x1), height + 1)
-                x = getattr(self, f'stage{height}d')(torch.cat((x2, x1), 1))
+        def unet(x, height: int):
+            if height < 5:
+                x1 = self.enc_layers[height](x)
+                x2 = unet(self.downsample(x1), height + 1)
+                x = self.dec_layers[height](torch.cat((x2, x1), 1))
                 side(x, height)
-                return _upsample_like(x, sizes[height - 1]) if height > 1 else x
+                out = _upsample_shape(x, sizes[height-1]) if height > 0 else x
             else:
-                x = getattr(self, f'stage{height}')(x)
+                x = self.enc_layers[height](x)
                 side(x, height)
-                return _upsample_like(x, sizes[height - 1])
+                out = _upsample_shape(x, sizes[height-1])
+            return out
 
         def side(x, h):
             # side output saliency map (before sigmoid)
-            x = getattr(self, f'side{h}')(x)
-            x = _upsample_like(x, sizes[1])
+            x = self.side_layers[h](x)
+            x = _upsample_shape(x, sizes[0])
             maps.append(x)
 
         def fuse():
             # fuse saliency probability maps
             maps.reverse()
             x = torch.cat(maps, 1)
-            x = getattr(self, 'outconv')(x)
+            x = self.outconv(x)
             maps.insert(0, x)
             return [torch.sigmoid(x) for x in maps]
 
-        unet(x)
+        unet(x, height=0)
         maps = fuse()
         return maps
 
@@ -361,39 +430,57 @@ class U2NET(nn.Module):
 
 
 def U2NET_full(out_ch: int = 1):
-    full = {
-        # cfgs for building RSUs and sides
-        # {stage : [name, (height(L), in_ch, mid_ch, out_ch, dilated), side]}
-        'stage1': ['En_1', (7, 3, 32, 64), -1],
-        'stage2': ['En_2', (6, 64, 32, 128), -1],
-        'stage3': ['En_3', (5, 128, 64, 256), -1],
-        'stage4': ['En_4', (4, 256, 128, 512), -1],
-        'stage5': ['En_5', (4, 512, 256, 512, True), -1],
-        'stage6': ['En_6', (4, 512, 256, 512, True), 512],
-        'stage5d': ['De_5', (4, 1024, 256, 512, True), 512],
-        'stage4d': ['De_4', (4, 1024, 128, 256), 256],
-        'stage3d': ['De_3', (5, 512, 64, 128), 128],
-        'stage2d': ['De_2', (6, 256, 32, 64), 64],
-        'stage1d': ['De_1', (7, 128, 16, 64), 64],
-    }
-    return U2NET(cfgs=full, out_ch=out_ch)
-
+    enc_layer_cfgs = [
+        U2NetLayerCfg(rsu_height=7, rsu_in_ch=3,    rsu_mid_ch=32,  rsu_out_ch=64,  rsu_dilated=False, side_in_chn=None),
+        U2NetLayerCfg(rsu_height=6, rsu_in_ch=64,   rsu_mid_ch=32,  rsu_out_ch=128, rsu_dilated=False, side_in_chn=None),
+        U2NetLayerCfg(rsu_height=5, rsu_in_ch=128,  rsu_mid_ch=64,  rsu_out_ch=256, rsu_dilated=False, side_in_chn=None),
+        U2NetLayerCfg(rsu_height=4, rsu_in_ch=256,  rsu_mid_ch=128, rsu_out_ch=512, rsu_dilated=False, side_in_chn=None),
+        U2NetLayerCfg(rsu_height=4, rsu_in_ch=512,  rsu_mid_ch=256, rsu_out_ch=512, rsu_dilated=True,  side_in_chn=None),
+        U2NetLayerCfg(rsu_height=4, rsu_in_ch=512,  rsu_mid_ch=256, rsu_out_ch=512, rsu_dilated=True,  side_in_chn=512),
+    ]
+    dec_layer_cfgs = [
+        U2NetLayerCfg(rsu_height=4, rsu_in_ch=1024, rsu_mid_ch=256, rsu_out_ch=512, rsu_dilated=True,  side_in_chn=512),
+        U2NetLayerCfg(rsu_height=4, rsu_in_ch=1024, rsu_mid_ch=128, rsu_out_ch=256, rsu_dilated=False, side_in_chn=256),
+        U2NetLayerCfg(rsu_height=5, rsu_in_ch=512,  rsu_mid_ch=64,  rsu_out_ch=128, rsu_dilated=False, side_in_chn=128),
+        U2NetLayerCfg(rsu_height=6, rsu_in_ch=256,  rsu_mid_ch=32,  rsu_out_ch=64,  rsu_dilated=False, side_in_chn=64),
+        U2NetLayerCfg(rsu_height=7, rsu_in_ch=128,  rsu_mid_ch=16,  rsu_out_ch=64,  rsu_dilated=False, side_in_chn=64),
+    ]
+    return U2Net(enc_layer_cfgs=enc_layer_cfgs, dec_layer_cfgs=dec_layer_cfgs, out_ch=out_ch)
 
 
 def U2NET_lite(out_ch: int = 1):
-    lite = {
-        # cfgs for building RSUs and sides
-        # {stage : [name, (height(L), in_ch, mid_ch, out_ch, dilated), side]}
-        'stage1': ['En_1', (7, 3, 16, 64), -1],
-        'stage2': ['En_2', (6, 64, 16, 64), -1],
-        'stage3': ['En_3', (5, 64, 16, 64), -1],
-        'stage4': ['En_4', (4, 64, 16, 64), -1],
-        'stage5': ['En_5', (4, 64, 16, 64, True), -1],
-        'stage6': ['En_6', (4, 64, 16, 64, True), 64],
-        'stage5d': ['De_5', (4, 128, 16, 64, True), 64],
-        'stage4d': ['De_4', (4, 128, 16, 64), 64],
-        'stage3d': ['De_3', (5, 128, 16, 64), 64],
-        'stage2d': ['De_2', (6, 128, 16, 64), 64],
-        'stage1d': ['De_1', (7, 128, 16, 64), 64],
-    }
-    return U2NET(cfgs=lite, out_ch=out_ch)
+    enc_layer_cfgs = [
+        U2NetLayerCfg(rsu_height=7, rsu_in_ch=3,  rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=None),
+        U2NetLayerCfg(rsu_height=6, rsu_in_ch=64, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=None),
+        U2NetLayerCfg(rsu_height=5, rsu_in_ch=64, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=None),
+        U2NetLayerCfg(rsu_height=4, rsu_in_ch=64, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=None),
+        U2NetLayerCfg(rsu_height=4, rsu_in_ch=64, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=True,  side_in_chn=None),
+        U2NetLayerCfg(rsu_height=4, rsu_in_ch=64, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=True,  side_in_chn=64),
+    ]
+    dec_layer_cfgs = [
+        U2NetLayerCfg(rsu_height=4, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=True,  side_in_chn=64),
+        U2NetLayerCfg(rsu_height=4, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=64),
+        U2NetLayerCfg(rsu_height=5, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=64),
+        U2NetLayerCfg(rsu_height=6, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=64),
+        U2NetLayerCfg(rsu_height=7, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=64),
+    ]
+    return U2Net(enc_layer_cfgs=enc_layer_cfgs, dec_layer_cfgs=dec_layer_cfgs, out_ch=out_ch)
+
+
+# ========================================================================= #
+# END                                                                       #
+# ========================================================================= #
+
+
+if __name__ == '__main__':
+
+    with torch.no_grad():
+        model = U2NET_full()
+
+        x = torch.randn(1, 3, 256, 256, dtype=torch.float32)
+
+        print(x.shape)
+
+        outs = model.forward(x)
+
+        print([t.shape for t in outs])

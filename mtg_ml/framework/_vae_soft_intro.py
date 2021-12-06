@@ -195,7 +195,7 @@ class SoftIntroVaeSystem(MlSystem):
         # initialise
         self._scale = 1 / (self.hparams.img_chn * self.hparams.img_size**2)  # 1 / (C * H * W)
         self._loss = get_recon_loss(self.hparams.recon_loss)
-        # make model
+        # make model -- TODO: this model is quite terrible...?
         self.model = SoftIntroVaeModel(
             img_size=self.hparams.img_size,
             img_chn=self.hparams.img_chn,
@@ -204,10 +204,14 @@ class SoftIntroVaeSystem(MlSystem):
         )
 
     def configure_optimizers(self):
+        # TODO: select optimizer
         optimizer_enc = optim.AdamW(self.model._encoder.parameters(), lr=self.hparams.lr_enc)  # was Adam
         optimizer_dec = optim.AdamW(self.model._decoder.parameters(), lr=self.hparams.lr_dec)  # was Adam
-        enc_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_enc, milestones=(350,), gamma=0.1)
-        dec_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_dec, milestones=(350,), gamma=0.1)
+        # enc_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_enc, milestones=(350,), gamma=1.0)
+        # dec_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_dec, milestones=(350,), gamma=1.0)
+        # TODO: update the schedule!
+        enc_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_enc, milestones=[64, 96, 128, 160], gamma=1/(10**0.5))  # was: milestones=(350,), gamma=0.1
+        dec_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_dec, milestones=[64, 96, 128, 160], gamma=1/(10**0.5))  # was: milestones=(350,), gamma=0.1
         return [optimizer_enc, optimizer_dec], [enc_scheduler, dec_scheduler]
 
     def training_step(self, batch, batch_idx: int, optimizer_idx: int):
