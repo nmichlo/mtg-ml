@@ -210,6 +210,7 @@ FROM: https://github.com/xuebinqin/U-2-Net/blob/master/model/u2net_refactor.py
 MODIFICATIONS:
 - cleaned up for use the mtg_ml
 """
+import time
 from dataclasses import dataclass
 from typing import List
 from typing import Optional
@@ -379,52 +380,75 @@ class U2Net(nn.Module):
         for i, s in enumerate(dec_layer_cfgs + [enc_layer_cfgs[-1]]):
             self.side_layers.append(nn.Conv2d(in_channels=s.side_in_chn, out_channels=self.out_ch, kernel_size=3, padding=1))
 
+    # def forward_old(self, x):
+    #     sizes = _size_map(x, self.num_stages)
+    #     outputs = []  # storage for maps
+    #
+    #     # recursively call unet stages
+    #     def forward_stage(x, stage_idx: int):
+    #         if stage_idx < len(self.dec_layers):
+    #             e = self.enc_layers[stage_idx](x)
+    #             m = forward_stage(self.downsample(e), stage_idx + 1)
+    #             d = self.dec_layers[stage_idx](torch.cat((m, e), 1))
+    #             side_output(d, stage_idx)
+    #             out = _upsample_shape(d, sizes[stage_idx-1]) if stage_idx > 0 else d
+    #         else:
+    #             m = self.enc_layers[stage_idx](x)
+    #             side_output(m, stage_idx)
+    #             out = _upsample_shape(m, sizes[stage_idx-1])
+    #         return out
+    #
+    #     # store the output from a single stage
+    #     def side_output(x, stage_idx: int):
+    #         x = self.side_layers[stage_idx](x)
+    #         x = _upsample_shape(x, sizes[0])
+    #         outputs.append(x)
+    #
+    #     # generate fused output & activate all
+    #     def fuse_outputs():
+    #         results = [self.outconv(torch.cat(outputs, dim=1)), *outputs[::-1]]
+    #         results = [torch.sigmoid(x) for x in results]
+    #         return results
+    #
+    #     forward_stage(x, stage_idx=0)
+    #     results = fuse_outputs()
+    #     return results
 
     def forward(self, x):
-        sizes = _size_map(x, self.num_stages)
-        outputs = []  # storage for maps
+        # encoder stages: iter (0 -> n-1)
+        e = x
+        enc_outputs = []
+        for enc in self.enc_layers[:-1]:
+            e = enc(e)
+            enc_outputs.append(e)
+            e = self.downsample(e)
 
-        # recursively call unet stages
-        def forward_stage(x, stage_idx: int):
-            if stage_idx < len(self.dec_layers):
-                e = self.enc_layers[stage_idx](x)
-                m = forward_stage(self.downsample(e), stage_idx + 1)
-                d = self.dec_layers[stage_idx](torch.cat((m, e), 1))
-                side_output(d, stage_idx)
-                out = _upsample_shape(d, sizes[stage_idx-1]) if stage_idx > 0 else d
-            else:
-                m = self.enc_layers[stage_idx](x)
-                side_output(m, stage_idx)
-                out = _upsample_shape(m, sizes[stage_idx-1])
-            return out
+        # middle stage: idx=n
+        m = self.enc_layers[-1](e)
 
-        # store the output from a single stage
-        def side_output(x, stage_idx: int):
-            x = self.side_layers[stage_idx](x)
-            x = _upsample_shape(x, sizes[0])
-            outputs.append(x)
+        # decoder stages: iter (n-1 -> 0)
+        d = m
+        dec_outputs = []
+        for dec, e in zip(self.dec_layers[::-1], enc_outputs[::-1]):
+            dec_outputs.append(d)
+            d = _upsample_like(d, like=e)
+            d = dec(torch.cat((d, e), dim=1))  # (B, Cd + Ce, H, W)
+        del m, enc_outputs
 
-        # generate fused output & activate all
-        def fuse_outputs():
-            results = [self.outconv(torch.cat(outputs, dim=1)), *outputs[::-1]]
-            results = [torch.sigmoid(x) for x in results]
-            return results
+        # side outputs: iter (0 -> n)
+        s0 = self.side_layers[0](d)
+        side_outputs = [s0]
+        for i, (side, d) in enumerate(zip(self.side_layers[1:], dec_outputs[::-1])):
+            s = _upsample_like(side(d), like=s0)
+            side_outputs.append(s)
+        del d, dec_outputs
 
-        forward_stage(x, stage_idx=0)
-        results = fuse_outputs()
-        return results
+        # combine outputs: idx=n+1
+        s = self.outconv(torch.cat(side_outputs[::-1], dim=1))
+        side_outputs = [s] + side_outputs
 
-    def _make_layers(self, cfgs):
-        self.height = int((len(cfgs) + 1) / 2)
-        self.add_module('downsample', nn.MaxPool2d(2, stride=2, ceil_mode=True))
-        for k, v in cfgs.items():
-            # build rsu block
-            self.add_module(k, RSU(v[0], *v[1]))
-            if v[2] > 0:
-                # build side layer
-                self.add_module(f'side{v[0][-1]}', nn.Conv2d(v[2], self.out_ch, 3, padding=1))
-        # build fuse layer
-        self.add_module('outconv', nn.Conv2d(int(self.height * self.out_ch), self.out_ch, 1))
+        # activate: size=(n+1,)
+        return [torch.sigmoid(s) for s in side_outputs]
 
 
 def U2NET_full(out_ch: int = 1):
@@ -472,13 +496,12 @@ def U2NET_lite(out_ch: int = 1):
 
 if __name__ == '__main__':
 
-    with torch.no_grad():
-        model = U2NET_full()
+    model = U2NET_full()
 
-        x = torch.randn(1, 3, 256, 256, dtype=torch.float32)
+    x = torch.randn(1, 3, 256, 256, dtype=torch.float32)
 
-        print(x.shape)
+    outs = model.forward(x)
 
-        outs = model.forward(x)
-
-        print([t.shape for t in outs])
+    print([float(o.mean()) for o in outs])
+    print([float(o.std()) for o in outs])
+    print([tuple(o.shape) for o in outs])
