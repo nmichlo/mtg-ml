@@ -386,7 +386,7 @@ class U2Net(nn.Module):
 
         # recursively call unet stages
         def forward_stage(x, stage_idx: int):
-            if stage_idx < 5:
+            if stage_idx < len(self.dec_layers):
                 e = self.enc_layers[stage_idx](x)
                 m = forward_stage(self.downsample(e), stage_idx + 1)
                 d = self.dec_layers[stage_idx](torch.cat((m, e), 1))
