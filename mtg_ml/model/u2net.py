@@ -209,13 +209,13 @@ FROM: https://github.com/xuebinqin/U-2-Net/blob/master/model/u2net_refactor.py
 
 MODIFICATIONS:
 - cleaned up for use the mtg_ml
+-
 """
 
 
 from dataclasses import dataclass
 from typing import List
 from typing import Optional
-from typing import Tuple
 from typing import Union
 
 import torch
@@ -227,17 +227,10 @@ import math
 # ========================================================================= #
 # Helper                                                                    #
 # ========================================================================= #
-from mtg_ml.util.pt import count_params
-from mtg_ml.util.pt import count_params_pretty
 
 
-def _upsample_shape(x: torch.Tensor, size):
+def _upsample_to_shape(x: torch.Tensor, size):
     return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
-    # return nn.Upsample(size=size, mode='bilinear', align_corners=False)(x)
-
-
-def _upsample_like(x: torch.Tensor, like: torch.Tensor):
-    return F.interpolate(x, size=like.shape[2:], mode='bilinear', align_corners=False)
 
 
 def _size_map(x: torch.Tensor, height: int, offset: bool = False):
@@ -251,6 +244,20 @@ def _size_map(x: torch.Tensor, height: int, offset: bool = False):
     if offset:
         return {h+1: s for h, s in sizes.items()}  # old style
     return sizes
+
+
+_ACTIVATIONS = {
+    'sigmoid': torch.sigmoid,
+    'relu': torch.relu,
+    'selu': torch.selu,
+    'softmax': torch.softmax,
+    'tanh': torch.tanh,
+}
+
+
+def activate(x: torch.Tensor, activation: str):
+    fn = _ACTIVATIONS[activation]
+    return fn(x)
 
 
 # ========================================================================= #
@@ -296,14 +303,16 @@ class Rsu(nn.Module):
         # U-Net like symmetric encoder-decoder structure
         def forward_layer(x, layer_idx: int):
             if layer_idx < self.num_layers - 1:
-                x1 = getattr(self, f'rebnconv{layer_idx}')(x)
-                if not self.dilated and layer_idx < self.num_layers - 2:
-                    x2 = forward_layer(self.downsample(x1), layer_idx + 1)
-                else:
-                    x2 = forward_layer(x1, layer_idx + 1)
+                e = getattr(self, f'rebnconv{layer_idx}')(x)
 
-                x = getattr(self, f'rebnconv{layer_idx}d')(torch.cat((x2, x1), 1))
-                return _upsample_shape(x, sizes[layer_idx - 1]) if (not self.dilated and layer_idx > 0) else x
+                if not self.dilated and layer_idx < self.num_layers - 2:
+                    m = forward_layer(self.downsample(e), layer_idx + 1)
+                else:
+                    m = forward_layer(e, layer_idx + 1)
+
+                d = getattr(self, f'rebnconv{layer_idx}d')(torch.cat((m, e), 1))
+
+                return _upsample_to_shape(d, sizes[layer_idx - 1]) if (not self.dilated and layer_idx > 0) else d
             else:
                 return getattr(self, f'rebnconv{layer_idx}')(x)
 
@@ -336,21 +345,21 @@ class EncDecStage(nn.Module):
     MODEL:
     x ──> enc ─────────> + ──> dec ───> (main)
            │             │      │
-          down           up    side ──> up ──> (extra)
+          down           up    side ──> (extra)
            │             │
            ╰─> [child] ──╯
 
     RECURSIVE MODEL:
     x ──> enc ───────────────────────────────> + ──> dec ───> (main)
            │                                   │      │
-          down                                 up     side ──> up ──> (extra)
+          down                                 up     side ──> (extra)
            │   ╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮    │
            ╰─> ┊ enc ─────────> + ──> dec ┊ ───╯
-               ┊  │             │      │  ╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮
-               ┊ down           up     side ──> up ──> (extra) ┊
-               ┊  │             │                              ┊
-               ┊  ╰─> [child] ──╯                              ┊
-               ╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯
+               ┊  │             │      │  ╰┄┄┄┄┄┄┄┄┄┄┄┄┄╮
+               ┊ down           up     side ──> (extra) ┊
+               ┊  │             │                       ┊
+               ┊  ╰─> [child] ──╯                       ┊
+               ╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯
 
     NOTES:
     - none of the layers should change the size of the model.
@@ -364,19 +373,19 @@ class EncDecStage(nn.Module):
         self.side_layer = side_layer
         self.child = child
 
-    def forward(self, x: torch.Tensor, output_size: Tuple[int, int]):
+    def forward(self, x: torch.Tensor):
         # encoder
         e = self.enc_layer(x)
         # downsample -> middle -> upsample
         m = F.max_pool2d(e, kernel_size=2, stride=2, ceil_mode=True)
-        m, S = self.child(m, output_size=output_size)
-        m = F.interpolate(m, size=e.shape[2:], mode='bilinear', align_corners=False)
+        m, S = self.child(m)
+        m = _upsample_to_shape(m, e.shape[2:])
         # decoder
         d = self.dec_layer(torch.cat((m, e), dim=1))
         # output
-        s = _upsample_shape(self.side_layer(d), size=output_size)
+        s = self.side_layer(d)
         # done!
-        return d, S + [s]
+        return d, [s] + S
 
 
 class MidStage(nn.Module):
@@ -385,7 +394,7 @@ class MidStage(nn.Module):
     MODEL:
     x ──> enc ──> (main)
            │
-          side ──> up ──> (extra)
+          side ──> (extra)
     """
 
     def __init__(self, mid_layer: Rsu, side_layer: nn.Module):
@@ -393,11 +402,11 @@ class MidStage(nn.Module):
         self.mid_layer = mid_layer
         self.side_layer = side_layer
 
-    def forward(self, x: torch.Tensor, output_size: Tuple[int, int]):
+    def forward(self, x: torch.Tensor):
         # encoder & decoder
         d = self.mid_layer(x)
         # output
-        s = _upsample_shape(self.side_layer(d), size=output_size)
+        s = self.side_layer(d)
         # done!
         return d, [s]
 
@@ -419,123 +428,51 @@ class U2NetLayerCfg:
     rsu_dilated: bool = False
 
     @classmethod
-    def normalise(cls, layer) -> 'U2NetLayerCfg':
-        if isinstance(layer, cls):
-            return layer
-        return cls(**layer)
-
-
-class U2NetStages(nn.Module):
-
-    def __init__(
-        self,
-        enc_layer_cfgs: List[Union[U2NetLayerCfg, dict]],
-        dec_layer_cfgs: List[Union[U2NetLayerCfg, dict]],
-        out_ch: int,
-    ):
-        super().__init__()
-
-        # normalise configs -- layers should be pass in feed forward order, eg. encoders: 0, 1, 2, 3, 4, 5 and eg. decoders: 4, 3, 2, 1, 0
-        enc_layer_cfgs = [U2NetLayerCfg.normalise(layer) for layer in enc_layer_cfgs]
-        dec_layer_cfgs = [U2NetLayerCfg.normalise(layer) for layer in dec_layer_cfgs][::-1]
-        assert len(enc_layer_cfgs) == len(dec_layer_cfgs) + 1
-        # split layers
-        (*enc_layer_cfgs, mid_layer_cfg) = enc_layer_cfgs
-
-        # vars
-        self.out_ch = out_ch
-        self.num_stages = len(dec_layer_cfgs) + 1
-
-        # make layer fns
-        def rsu(cfg):
-            return Rsu(num_layers=cfg.rsu_height, in_ch=cfg.rsu_in_ch, mid_ch=cfg.rsu_mid_ch, out_ch=cfg.rsu_out_ch, dilated=cfg.rsu_dilated)
-        def side(cfg):
-            return nn.Conv2d(in_channels=cfg.side_in_chn, out_channels=self.out_ch, kernel_size=3, padding=1)
-
-        # create stages
-        child = MidStage(mid_layer=rsu(mid_layer_cfg), side_layer=side(mid_layer_cfg))
-        for enc_cfg, dec_cfg in zip(enc_layer_cfgs[::-1], dec_layer_cfgs[::-1]):
-            child = EncDecStage(enc_layer=rsu(enc_cfg), dec_layer=rsu(dec_cfg), side_layer=side(dec_cfg), child=child)
-        self.child = child
-
-        # output layer
-        self.outconv = nn.Conv2d(in_channels=int(self.num_stages * self.out_ch), out_channels=self.out_ch, kernel_size=1)
-
-    def forward(self, x):
-        _, S = self.child(x, x.shape[2:])
-        # combine
-        results = [self.outconv(torch.cat(S, dim=1)), *S[::-1]]
-        results = [torch.sigmoid(x) for x in results]
-        return results
+    def normalise(cls, *layers) -> List['U2NetLayerCfg']:
+        return [(layer if isinstance(layer, cls) else cls(**layer)) for layer in layers]
 
 
 class U2Net(nn.Module):
 
     def __init__(
         self,
-        enc_layer_cfgs: List[Union[U2NetLayerCfg, dict]],
-        dec_layer_cfgs: List[Union[U2NetLayerCfg, dict]],
+        enc_cfgs: List[Union[U2NetLayerCfg, dict]],
+        dec_cfgs: List[Union[U2NetLayerCfg, dict]],
         out_ch: int,
+        out_activation: str = 'sigmoid',
     ):
         super().__init__()
-
+        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
         # normalise configs -- layers should be pass in feed forward order, eg. encoders: 0, 1, 2, 3, 4, 5 and eg. decoders: 4, 3, 2, 1, 0
-        enc_layer_cfgs = [U2NetLayerCfg.normalise(layer) for layer in enc_layer_cfgs]
-        dec_layer_cfgs = [U2NetLayerCfg.normalise(layer) for layer in dec_layer_cfgs][::-1]
-        assert len(enc_layer_cfgs) == len(dec_layer_cfgs) + 1
-
-        # save hparams
+        (cfg_mid, *cfgs_encs) = U2NetLayerCfg.normalise(*enc_cfgs)[::-1]  # [..., 5, 4, 3, 2, 1, 0]
+        (cfgs_decs)           = U2NetLayerCfg.normalise(*dec_cfgs)        # [...,    4, 3, 2, 1, 0]
+        assert len(cfgs_encs) == len(cfgs_decs)
+        # vars
         self.out_ch = out_ch
-        self.num_stages = (len(enc_layer_cfgs) + len(dec_layer_cfgs) + 1) // 2
-
-        # layers
-        self.downsample = nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)
-        self.enc_layers = nn.ModuleList()
-        self.dec_layers = nn.ModuleList()
-        self.side_layers = nn.ModuleList()
-        self.outconv = nn.Conv2d(in_channels=int(self.num_stages * self.out_ch), out_channels=self.out_ch, kernel_size=1)
-
-        # make enc dec layers
-        for i, e in enumerate(enc_layer_cfgs): self.enc_layers.append(Rsu(num_layers=e.rsu_height, in_ch=e.rsu_in_ch, mid_ch=e.rsu_mid_ch, out_ch=e.rsu_out_ch, dilated=e.rsu_dilated))
-        for i, d in enumerate(dec_layer_cfgs): self.dec_layers.append(Rsu(num_layers=d.rsu_height, in_ch=d.rsu_in_ch, mid_ch=d.rsu_mid_ch, out_ch=d.rsu_out_ch, dilated=d.rsu_dilated))
-
-        # make side layers -- TODO: infer this automatically without s.side_in_chn
-        for i, s in enumerate(dec_layer_cfgs + [enc_layer_cfgs[-1]]):
-            self.side_layers.append(nn.Conv2d(in_channels=s.side_in_chn, out_channels=self.out_ch, kernel_size=3, padding=1))
+        self.out_activation = out_activation
+        self.num_stages = len(cfgs_decs) + 1
+        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
+        # make layer fns
+        def rsu(cfg): return Rsu(num_layers=cfg.rsu_height, in_ch=cfg.rsu_in_ch, mid_ch=cfg.rsu_mid_ch, out_ch=cfg.rsu_out_ch, dilated=cfg.rsu_dilated)
+        def out(cfg): return nn.Conv2d(in_channels=cfg.side_in_chn, out_channels=self.out_ch, kernel_size=3, padding=1)
+        # create stages
+        self.unet = MidStage(mid_layer=rsu(cfg_mid), side_layer=out(cfg_mid))
+        for enc_cfg, dec_cfg in zip(cfgs_encs, cfgs_decs):
+            self.unet = EncDecStage(enc_layer=rsu(enc_cfg), dec_layer=rsu(dec_cfg), side_layer=out(dec_cfg), child=self.unet)
+        # output layer -- TODO: maybe increase the size of this layer?
+        self.outconv = nn.Conv2d(in_channels=self.num_stages * self.out_ch, out_channels=self.out_ch, kernel_size=1)
+        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
 
     def forward(self, x):
-        sizes = _size_map(x, self.num_stages)
-        outputs = []  # storage for maps
-
-        # recursively call unet stages
-        def forward_stage(x, stage_idx: int):
-            if stage_idx < len(self.dec_layers):
-                e = self.enc_layers[stage_idx](x)
-                m = forward_stage(self.downsample(e), stage_idx + 1)
-                d = self.dec_layers[stage_idx](torch.cat((m, e), 1))
-                side_output(d, stage_idx)
-                out = _upsample_shape(d, sizes[stage_idx-1]) if stage_idx > 0 else d
-            else:
-                m = self.enc_layers[stage_idx](x)
-                side_output(m, stage_idx)
-                out = _upsample_shape(m, sizes[stage_idx-1])
-            return out
-
-        # store the output from a single stage
-        def side_output(x, stage_idx: int):
-            x = self.side_layers[stage_idx](x)
-            x = _upsample_shape(x, sizes[0])
-            outputs.append(x)
-
-        # generate fused output & activate all
-        def fuse_outputs():
-            results = [self.outconv(torch.cat(outputs, dim=1)), *outputs[::-1]]
-            results = [torch.sigmoid(x) for x in results]
-            return results
-
-        forward_stage(x, stage_idx=0)
-        results = fuse_outputs()
-        return results
+        # feed forward through unet and get side outputs
+        _, outputs = self.unet(x)
+        # generate outputs: 1. rescale, 2. concatenate, 3. activate
+        outputs = [_upsample_to_shape(s, size=x.shape[2:]) for s in outputs]
+        outputs = [self.outconv(torch.cat(outputs, dim=1)), *outputs]
+        if self.out_activation is not None:
+            outputs = [activate(s, self.out_activation) for s in outputs]
+        # done
+        return outputs
 
 
 def U2NET_full(out_ch: int = 1, cls=U2Net):
@@ -554,7 +491,7 @@ def U2NET_full(out_ch: int = 1, cls=U2Net):
         U2NetLayerCfg(rsu_height=6, rsu_in_ch=256,  rsu_mid_ch=32,  rsu_out_ch=64,  rsu_dilated=False, side_in_chn=64),
         U2NetLayerCfg(rsu_height=7, rsu_in_ch=128,  rsu_mid_ch=16,  rsu_out_ch=64,  rsu_dilated=False, side_in_chn=64),
     ]
-    return cls(enc_layer_cfgs=enc_layer_cfgs, dec_layer_cfgs=dec_layer_cfgs, out_ch=out_ch)
+    return cls(enc_cfgs=enc_layer_cfgs, dec_cfgs=dec_layer_cfgs, out_ch=out_ch)
 
 
 def U2NET_lite(out_ch: int = 1, cls=U2Net):
@@ -573,7 +510,7 @@ def U2NET_lite(out_ch: int = 1, cls=U2Net):
         U2NetLayerCfg(rsu_height=6, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=64),
         U2NetLayerCfg(rsu_height=7, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=64),
     ]
-    return cls(enc_layer_cfgs=enc_layer_cfgs, dec_layer_cfgs=dec_layer_cfgs, out_ch=out_ch)
+    return cls(enc_cfgs=enc_layer_cfgs, dec_cfgs=dec_layer_cfgs, out_ch=out_ch)
 
 
 # ========================================================================= #
@@ -583,17 +520,9 @@ def U2NET_lite(out_ch: int = 1, cls=U2Net):
 
 if __name__ == '__main__':
 
-
     x = torch.randn(1, 3, 256, 256, dtype=torch.float32)
 
-    model = U2NET_full(cls=U2Net)
-    outs = model.forward(x)
-
-    print([float(o.mean()) for o in outs])
-    print([float(o.std()) for o in outs])
-    print([tuple(o.shape) for o in outs])
-
-    model = U2NET_full(cls=U2NetStages)
+    model = U2NET_full()
     outs = model.forward(x)
 
     print([float(o.mean()) for o in outs])
