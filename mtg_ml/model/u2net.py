@@ -274,7 +274,7 @@ class Rsu(nn.Module):
     def __init__(
         self,
         name: str,
-        height: int,
+        num_layers: int,
         in_ch: int,
         mid_ch: int,
         out_ch: int,
@@ -282,44 +282,44 @@ class Rsu(nn.Module):
     ):
         super(Rsu, self).__init__()
         self.name = name
-        self.height = height
+        self.num_layers = num_layers
         self.dilated = dilated
-        self._make_layers(height, in_ch, mid_ch, out_ch, dilated)
+        self._make_layers(num_layers, in_ch, mid_ch, out_ch, dilated)
 
     def forward(self, x):
-        sizes = _size_map(x, self.height, offset=True)
+        sizes = _size_map(x, self.num_layers - 1, offset=False)
         x = self.rebnconvin(x)
 
         # U-Net like symmetric encoder-decoder structure
-        def unet(x, height=1):
-            if height < self.height:
-                x1 = getattr(self, f'rebnconv{height}')(x)
-                if not self.dilated and height < self.height - 1:
-                    x2 = unet(getattr(self, 'downsample')(x1), height + 1)
+        def forward_layer(x, layer_idx: int):
+            if layer_idx < self.num_layers - 1:
+                x1 = getattr(self, f'rebnconv{layer_idx}')(x)
+                if not self.dilated and layer_idx < self.num_layers - 2:
+                    x2 = forward_layer(self.downsample(x1), layer_idx + 1)
                 else:
-                    x2 = unet(x1, height + 1)
+                    x2 = forward_layer(x1, layer_idx + 1)
 
-                x = getattr(self, f'rebnconv{height}d')(torch.cat((x2, x1), 1))
-                return _upsample_shape(x, sizes[height - 1]) if not self.dilated and height > 1 else x
+                x = getattr(self, f'rebnconv{layer_idx}d')(torch.cat((x2, x1), 1))
+                return _upsample_shape(x, sizes[layer_idx - 1]) if (not self.dilated and layer_idx > 0) else x
             else:
-                return getattr(self, f'rebnconv{height}')(x)
+                return getattr(self, f'rebnconv{layer_idx}')(x)
 
-        return x + unet(x)
+        return x + forward_layer(x, layer_idx=0)
 
-    def _make_layers(self, height, in_ch, mid_ch, out_ch, dilated=False):
-        self.add_module('rebnconvin', ConvBnReLU(in_ch, out_ch))
-        self.add_module('downsample', nn.MaxPool2d(2, stride=2, ceil_mode=True))
+    def _make_layers(self, num_layers: int, in_ch: int, mid_ch: int, out_ch: int, dilated: bool = False):
+        self.rebnconvin = ConvBnReLU(in_ch, out_ch)
+        self.downsample = nn.MaxPool2d(2, stride=2, ceil_mode=True)
 
-        self.add_module(f'rebnconv1', ConvBnReLU(out_ch, mid_ch))
-        self.add_module(f'rebnconv1d', ConvBnReLU(mid_ch * 2, out_ch))
+        self.rebnconv0 = ConvBnReLU(out_ch, mid_ch)
+        self.rebnconv0d = ConvBnReLU(mid_ch * 2, out_ch)
 
-        for i in range(2, height):
-            dilate = 1 if not dilated else 2 ** (i - 1)
+        for i in range(1, num_layers):
+            dilate = 1 if (not dilated) else 2 ** i
             self.add_module(f'rebnconv{i}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
             self.add_module(f'rebnconv{i}d', ConvBnReLU(mid_ch * 2, mid_ch, dilate=dilate))
 
-        dilate = 2 if not dilated else 2 ** (height - 1)
-        self.add_module(f'rebnconv{height}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
+        dilate = 2 if (not dilated) else (2 ** num_layers)
+        self.add_module(f'rebnconv{num_layers}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
 
 
 # ========================================================================= #
@@ -362,18 +362,18 @@ class U2Net(nn.Module):
 
         # save hparams
         self.out_ch = out_ch
-        self.height = (len(enc_layer_cfgs) + len(dec_layer_cfgs) + 1) // 2
+        self.num_stages = (len(enc_layer_cfgs) + len(dec_layer_cfgs) + 1) // 2
 
         # layers
         self.downsample = nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)
         self.enc_layers = nn.ModuleList()
         self.dec_layers = nn.ModuleList()
         self.side_layers = nn.ModuleList()
-        self.outconv = nn.Conv2d(in_channels=int(self.height * self.out_ch), out_channels=self.out_ch, kernel_size=1)
+        self.outconv = nn.Conv2d(in_channels=int(self.num_stages * self.out_ch), out_channels=self.out_ch, kernel_size=1)
 
         # make enc dec layers
-        for i, e in enumerate(enc_layer_cfgs): self.enc_layers.append(Rsu(name=f'En_{i+1}', height=e.rsu_height, in_ch=e.rsu_in_ch, mid_ch=e.rsu_mid_ch, out_ch=e.rsu_out_ch, dilated=e.rsu_dilated))
-        for i, d in enumerate(dec_layer_cfgs): self.dec_layers.append(Rsu(name=f'De_{i+1}', height=d.rsu_height, in_ch=d.rsu_in_ch, mid_ch=d.rsu_mid_ch, out_ch=d.rsu_out_ch, dilated=d.rsu_dilated))
+        for i, e in enumerate(enc_layer_cfgs): self.enc_layers.append(Rsu(name=f'En_{i+1}', num_layers=e.rsu_height, in_ch=e.rsu_in_ch, mid_ch=e.rsu_mid_ch, out_ch=e.rsu_out_ch, dilated=e.rsu_dilated))
+        for i, d in enumerate(dec_layer_cfgs): self.dec_layers.append(Rsu(name=f'De_{i+1}', num_layers=d.rsu_height, in_ch=d.rsu_in_ch, mid_ch=d.rsu_mid_ch, out_ch=d.rsu_out_ch, dilated=d.rsu_dilated))
 
         # make side layers -- TODO: infer this automatically without s.side_in_chn
         for i, s in enumerate(dec_layer_cfgs + [enc_layer_cfgs[-1]]):
@@ -381,40 +381,38 @@ class U2Net(nn.Module):
 
 
     def forward(self, x):
-        sizes = _size_map(x, self.height)
-        maps = []  # storage for maps
+        sizes = _size_map(x, self.num_stages)
+        outputs = []  # storage for maps
 
-        # side saliency map
-        def unet(x, height: int):
-            if height < 5:
-                x1 = self.enc_layers[height](x)
-                x2 = unet(self.downsample(x1), height + 1)
-                x = self.dec_layers[height](torch.cat((x2, x1), 1))
-                side(x, height)
-                out = _upsample_shape(x, sizes[height-1]) if height > 0 else x
+        # recursively call unet stages
+        def forward_stage(x, stage_idx: int):
+            if stage_idx < 5:
+                e = self.enc_layers[stage_idx](x)
+                m = forward_stage(self.downsample(e), stage_idx + 1)
+                d = self.dec_layers[stage_idx](torch.cat((m, e), 1))
+                side_output(d, stage_idx)
+                out = _upsample_shape(d, sizes[stage_idx-1]) if stage_idx > 0 else d
             else:
-                x = self.enc_layers[height](x)
-                side(x, height)
-                out = _upsample_shape(x, sizes[height-1])
+                m = self.enc_layers[stage_idx](x)
+                side_output(m, stage_idx)
+                out = _upsample_shape(m, sizes[stage_idx-1])
             return out
 
-        def side(x, h):
-            # side output saliency map (before sigmoid)
-            x = self.side_layers[h](x)
+        # store the output from a single stage
+        def side_output(x, stage_idx: int):
+            x = self.side_layers[stage_idx](x)
             x = _upsample_shape(x, sizes[0])
-            maps.append(x)
+            outputs.append(x)
 
-        def fuse():
-            # fuse saliency probability maps
-            maps.reverse()
-            x = torch.cat(maps, 1)
-            x = self.outconv(x)
-            maps.insert(0, x)
-            return [torch.sigmoid(x) for x in maps]
+        # generate fused output & activate all
+        def fuse_outputs():
+            results = [self.outconv(torch.cat(outputs, dim=1)), *outputs[::-1]]
+            results = [torch.sigmoid(x) for x in results]
+            return results
 
-        unet(x, height=0)
-        maps = fuse()
-        return maps
+        forward_stage(x, stage_idx=0)
+        results = fuse_outputs()
+        return results
 
     def _make_layers(self, cfgs):
         self.height = int((len(cfgs) + 1) / 2)
