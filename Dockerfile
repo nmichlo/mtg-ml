@@ -26,10 +26,11 @@ ENV LD_LIBRARY_PATH="/opt/conda/envs/torch397/lib:/usr/local/nvidia/lib:/usr/loc
 ENV PATH="/opt/conda/envs/torch397/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # install the requirements
-COPY requirements.txt mtg-ml/
-RUN pip install -r mtg-ml/requirements.txt
+COPY requirements.txt .
+RUN pip install -r requirements.txt
 
 # make sure we can see the package
+# -- usually we want to override these by specifying a volume to replace them, this enables easy development
 ENV PYTHONPATH="/workspace"
-COPY mtg_ml ./
-COPY experiment ./
+COPY mtg_ml mtg_ml
+COPY experiment experiment
