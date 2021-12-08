@@ -134,3 +134,9 @@ dmypy.json
 # CUSTOM
 /out/
 /multirun/
+
+# EXTRA
+/resources/
+/todo/
+/.git/
+/.idea/

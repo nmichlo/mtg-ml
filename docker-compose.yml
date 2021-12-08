@@ -1,0 +1,5 @@
+services:
+  torch:
+    build: .
+    volumes:
+      - mtg_ml:/workspace/mtg_ml
