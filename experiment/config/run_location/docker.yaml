@@ -10,8 +10,8 @@ hydra:
     env_set:
       # ----------------- #
       # PROGRAM VARS
-      ML_DATA_ROOT: ${oc.env:HOME}/workspace/playground/mtg-dataset/data
-      ML_OUT_ROOT: ${oc.env:HOME}/workspace/playground/mtg-ml/out
+      ML_DATA_ROOT: /data
+      ML_OUT_ROOT: /workspace/out
       # ----------------- #
       # DEBUG VARS: https://pytorch.org/docs/stable/distributed.html
       NCCL_DEBUG: "INFO"
