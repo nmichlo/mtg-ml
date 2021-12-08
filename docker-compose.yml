@@ -1,0 +1,19 @@
+# RUN THIS WITH:
+# $ docker-compose run --rm mtgml39 <command>
+
+services:
+  mtgml39:
+    # == docker build . -t mtgml39
+    build: .
+    # == docker run -v src:dst
+    volumes:
+      - ~/workspace/playground/mtg-ml/mtg_ml:/workspace/mtg_ml
+      - ~/workspace/playground/mtg-ml/experiment:/workspace/experiment
+      - ~/workspace/playground/mtg-ml/out:/workspace/out
+      - ~/workspace/playground/mtg-dataset/data:/data
+    # == docker run --gpus=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [ gpu ]

@@ -9,7 +9,7 @@
 <br/>
 
 <p align="center">
-    <img align="center" src="mtg-vae.png" width="640"/>
+    <img align="center" src="resources/mtg-vae.png" width="640"/>
     <p align="center">
         <i>Example reconstructions of dataset elements<br/>using a simple <a href="https://github.com/nmichlo/disent">Beta-VAE</a></i>
     </p>
