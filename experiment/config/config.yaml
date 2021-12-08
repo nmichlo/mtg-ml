@@ -12,8 +12,6 @@ settings:
 trainer:
   _target_: pytorch_lightning.Trainer
   gpus: 1
-#  num_nodes: 1
-#  strategy: ddp_spawn
   max_steps: 1000000
   max_epochs: 1000000
   callbacks:

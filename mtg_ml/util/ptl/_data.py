@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import random_split
 
 from mtg_ml.util.func import instantiate_or_none
-
+from mtg_ml.util.func import instantiate_required
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,36 @@ logger = logging.getLogger(__name__)
 # ========================================================================= #
 # Hdf5 Data Module                                                          #
 # ========================================================================= #
+
+
+class GenericDataModule(pl.LightningDataModule):
+
+    test_dataloader = None
+    val_dataloader = None
+    predict_dataloader = None
+
+    def __init__(
+        self,
+        dataset: dict,
+        batch_size: int = 64,
+        num_workers: int = min(os.cpu_count(), 8),
+    ):
+        super().__init__()
+        # save hyperparameters
+        self.save_hyperparameters()
+        # load h5py data
+        self._data = instantiate_required(self.hparams.dataset)
+
+    @property
+    def data(self):
+        return self._data
+
+    def train_dataloader(self):
+        return DataLoader(
+            dataset=self._data, num_workers=self.hparams.num_workers, batch_size=self.hparams.batch_size,
+            shuffle=True
+        )
+
 
 
 class Hdf5DataModule(pl.LightningDataModule):
@@ -55,8 +85,6 @@ class Hdf5DataModule(pl.LightningDataModule):
             logger.info('loading into memory...', end=' ')
             self._data = self._data.numpy_dataset()
             logger.info('done loading!')
-        # self.dims is returned when you call dm.size()
-        self.dims = self._data.shape[1:]
 
     @property
     def data(self):

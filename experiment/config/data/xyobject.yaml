@@ -1,4 +1,4 @@
-name: mtg64
+name: xyobject
 
 module_cls:
   _target_: mtg_ml.util.ptl.GenericDataModule
@@ -7,15 +7,12 @@ module_cls:
   batch_size: ${settings.data.batch_size}
   num_workers: 4
   dataset:
-    _target_: disent.dataset.data.Hdf5Dataset
-    h5_path: '${oc.env:ML_DATA_ROOT}/mtg_default-cards-20211128100240_normal_65903x64x46x3_c4.h5'
-    h5_dataset_name: 'data'
+    _target_: disent.dataset.data.XYObjectData
     transform:
       _target_: mtg_ml.util.transforms.ToStandardF32
       size: NULL
       mean: ${data.meta.img_mean}
       std: ${data.meta.img_std}
-      pad_to_square: TRUE
 
 meta:
   x_shape: [3, 64, 64]
