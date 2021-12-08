@@ -61,7 +61,7 @@ def action_train(cfg: DictConfig):
     seed(cfg.settings.job.seed)
 
     # HYDRA MODULES
-    datamodule = hydra.utils.instantiate(cfg.data.module_cls, _recursive_=False)
+    datamodule = hydra.utils.instantiate(cfg.data.module_cls)
     framework = hydra.utils.instantiate(cfg.framework.system_cls)
 
     pickle.dumps(datamodule)

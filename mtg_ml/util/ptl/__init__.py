@@ -1,5 +1,6 @@
 
 # data
+from mtg_ml.util.ptl._data import GenericDataModule
 from mtg_ml.util.ptl._data import Hdf5DataModule
 
 # system

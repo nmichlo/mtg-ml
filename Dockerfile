@@ -28,9 +28,11 @@ ENV PATH="/opt/conda/envs/torch397/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:
 # install the requirements
 COPY requirements.txt .
 RUN pip install -r requirements.txt
+COPY requirements-exp.txt .
+RUN pip install -r requirements-exp.txt
 
 # make sure we can see the package
 # -- usually we want to override these by specifying a volume to replace them, this enables easy development
-ENV PYTHONPATH="/workspace"
+ENV PYTHONPATH="."
 COPY mtg_ml mtg_ml
 COPY experiment experiment
