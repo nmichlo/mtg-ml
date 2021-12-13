@@ -70,7 +70,7 @@ class SoftIntroEncoder(nn.Module):
     FROM: https://github.com/taldatech/soft-intro-vae-pytorch
     """
 
-    def __init__(self, img_size: int = 256, img_chn: int = 3, z_size: int = 512, conv_channels=(64, 128, 256, 512, 512, 512)):
+    def __init__(self, img_size: int = 256, img_chn: int = 3, z_size: int = 512, double_fc: bool = False, conv_channels=(64, 128, 256, 512, 512, 512)):
         super(SoftIntroEncoder, self).__init__()
 
         self.img_chn = img_chn
@@ -94,9 +94,17 @@ class SoftIntroEncoder(nn.Module):
         # compute input shape to fcn | feed forward data!
         self.conv_output_size = self.main(torch.zeros(1, img_chn, img_size, img_size)).shape[1:]
         num_fc_features       = int(np.prod(self.conv_output_size))
+        print(f'ENC: conv_output_size={self.conv_output_size} [{num_fc_features}]')
 
         # final layer
-        self.fc = nn.Linear(num_fc_features, 2 * z_size)
+        if double_fc:
+            self.fc = nn.Sequential(
+                nn.Linear(num_fc_features, int(1.5 * z_size)),
+                nn.ReLU(True),
+                nn.Linear(int(1.5 * z_size), 2 * z_size),
+            )
+        else:
+            self.fc = nn.Linear(num_fc_features, 2 * z_size)
 
     def forward(self, x):
         y = self.main(x).view(x.size(0), -1)
@@ -109,7 +117,7 @@ class SoftIntroDecoder(nn.Module):
     FROM: https://github.com/taldatech/soft-intro-vae-pytorch
     """
 
-    def __init__(self, conv_input_size, img_size=256, img_chn=3, z_size=512, conv_channels=(64, 128, 256, 512, 512, 512)):
+    def __init__(self, conv_input_size, img_size=256, img_chn=3, z_size=512, double_fc: bool = False, conv_channels=(64, 128, 256, 512, 512, 512)):
         super(SoftIntroDecoder, self).__init__()
         self.img_chn = img_chn
         self.img_size = img_size
@@ -118,11 +126,25 @@ class SoftIntroDecoder(nn.Module):
         # TODO: I shouldn't have to pass this
         self.conv_input_size = conv_input_size
         num_fc_features = int(np.prod(conv_input_size))
+        print(f'DEC: conv_input_size={self.conv_input_size} [{num_fc_features}]')
 
         self.fc = nn.Sequential(
             nn.Linear(z_size, num_fc_features),
             nn.ReLU(True),
         )
+
+        if double_fc:
+            self.fc = nn.Sequential(
+                nn.Linear(z_size, int(1.5 * z_size)),
+                nn.ReLU(True),
+                nn.Linear(int(1.5 * z_size), num_fc_features),
+                nn.ReLU(True),
+            )
+        else:
+            self.fc = nn.Sequential(
+                nn.Linear(z_size, num_fc_features),
+                nn.ReLU(True),
+            )
 
         sz = 4
         self.main = nn.Sequential()
@@ -149,11 +171,11 @@ class SoftIntroDecoder(nn.Module):
 
 class SoftIntroVaeModel(BaseGaussianVaeModel):
 
-    def __init__(self, img_size: int = 256, img_chn: int = 3, z_size: int = 512, conv_channels=(64, 128, 256, 512, 512, 512)):
+    def __init__(self, img_size: int = 256, img_chn: int = 3, z_size: int = 512, conv_channels=(64, 128, 256, 512, 512, 512), double_fc: bool = False):
         super(SoftIntroVaeModel, self).__init__()
         self.z_size = z_size
-        self._encoder = SoftIntroEncoder(img_size=img_size, img_chn=img_chn, z_size=z_size, conv_channels=conv_channels)
-        self._decoder = SoftIntroDecoder(img_size=img_size, img_chn=img_chn, z_size=z_size, conv_channels=conv_channels, conv_input_size=self._encoder.conv_output_size)
+        self._encoder = SoftIntroEncoder(img_size=img_size, img_chn=img_chn, z_size=z_size, double_fc=double_fc, conv_channels=conv_channels)
+        self._decoder = SoftIntroDecoder(img_size=img_size, img_chn=img_chn, z_size=z_size, double_fc=double_fc, conv_channels=conv_channels, conv_input_size=self._encoder.conv_output_size)
 
     def _enc(self, x):
         return self._encoder(x)
@@ -173,6 +195,7 @@ class SoftIntroVaeSystem(MlSystem):
         self,
         # model
             z_size: int = 128,
+            model_double_fc: bool = True,
         # training
             lr_enc: float = 2e-4,
             lr_dec: float = 2e-4,
@@ -201,6 +224,7 @@ class SoftIntroVaeSystem(MlSystem):
             img_chn=self.hparams.img_chn,
             z_size=self.hparams.z_size,
             conv_channels=self.hparams.conv_channels,
+            double_fc=self.hparams.model_double_fc,
         )
 
     def configure_optimizers(self):
@@ -210,8 +234,10 @@ class SoftIntroVaeSystem(MlSystem):
         # enc_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_enc, milestones=(350,), gamma=1.0)
         # dec_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_dec, milestones=(350,), gamma=1.0)
         # TODO: update the schedule!
-        enc_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_enc, milestones=[64, 96, 128, 160], gamma=1/(10**0.5))  # was: milestones=(350,), gamma=0.1
-        dec_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_dec, milestones=[64, 96, 128, 160], gamma=1/(10**0.5))  # was: milestones=(350,), gamma=0.1
+        # enc_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_enc, milestones=[64, 96, 128, 160], gamma=1/(10**0.5))  # was: milestones=(350,), gamma=0.1
+        # dec_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_dec, milestones=[64, 96, 128, 160], gamma=1/(10**0.5))  # was: milestones=(350,), gamma=0.1
+        enc_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_enc, milestones=[64, 192, 320], gamma=1/(10**0.5))  # was: milestones=(350,), gamma=0.1
+        dec_scheduler = optim.lr_scheduler.MultiStepLR(optimizer_dec, milestones=[64, 192, 320], gamma=1/(10**0.5))  # was: milestones=(350,), gamma=0.1
         return [optimizer_enc, optimizer_dec], [enc_scheduler, dec_scheduler]
 
     def training_step(self, batch, batch_idx: int, optimizer_idx: int):

@@ -5,7 +5,6 @@ from typing import Sequence
 import torch
 import torch.nn.functional as F
 from disent.util.math.random import random_choice_prng
-from torch.optim import Adam
 from torch.optim import AdamW
 
 from mtg_ml.framework._improved_diffusion._util.unet_basic import UNetAttentionModel
