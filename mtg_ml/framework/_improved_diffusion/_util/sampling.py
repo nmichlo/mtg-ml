@@ -91,7 +91,7 @@ class IddpmVisualiseCallback(VisualiseCallbackBase):
         # parent
         name: str,
         # this
-        sample_fn: Callable[[IDDPM, ...], torch.Tensor] = sample_images,
+        sample_fn: Callable[[IDDPM, Any], torch.Tensor] = sample_images,
         sample_kwargs: Optional[Dict[str, Any]] = None,
         # parent
         every_n_steps: int = 1000,

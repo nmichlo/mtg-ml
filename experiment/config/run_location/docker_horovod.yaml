@@ -1,7 +1,8 @@
 # @package _global_
-#defaults:
+defaults:
 #  - override /hydra/job_logging: colorlog
 #  - override /hydra/hydra_logging: colorlog
+  - override /hydra/launcher: horovod
 
 # correctly set the working directories for hydra
 # - every time an experiment is run we increment the current dir
