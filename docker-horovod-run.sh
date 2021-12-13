@@ -2,7 +2,7 @@
 
 # get number of GPUS
 _num_gpus=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
-echo "Running With At Least 1 of $_num_gpus GPUs:"
+echo "Running Horovod With $_num_gpus GPUS:"
 nvidia-smi --query-gpu=name --format=csv,noheader
 
 # Run the docker command
@@ -16,4 +16,5 @@ docker run \
     -v ~/workspace/playground/mtg-dataset/data:/data \
     --env PYTHONPATH=/workspace \
     mtgml39 \
+    horovodrun -np "$_num_gpus" -H "localhost:$_num_gpus" \
     "$@"

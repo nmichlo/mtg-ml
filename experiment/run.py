@@ -1,8 +1,8 @@
 import logging
 import os
 import pickle
-from contextlib import contextmanager
 from datetime import datetime
+from functools import wraps
 
 import hydra
 from omegaconf import DictConfig
@@ -19,22 +19,26 @@ logger = logging.getLogger(__name__)
 # ========================================================================= #
 
 
-@contextmanager
-def wandb_cleanup():
-    # cleanup from old runs:
-    try:
-        import wandb
-        wandb.finish()
-    except:
-        pass
-    # wrap function
-    yield
-    # cleanup this run
-    try:
-        import wandb
-        wandb.finish()
-    except:
-        pass
+def wandb_cleanup(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        # cleanup from old runs:
+        try:
+            import wandb
+            wandb.finish()
+        except:
+            pass
+        # wrap function
+        result = func(*args, **kwargs)
+        # cleanup this run
+        try:
+            import wandb
+            wandb.finish()
+        except:
+            pass
+        # done!
+        return result
+    return wrapper
 
 
 # ========================================================================= #
@@ -42,7 +46,7 @@ def wandb_cleanup():
 # ========================================================================= #
 
 
-@wandb_cleanup()
+@wandb_cleanup
 def action_train(cfg: DictConfig):
     # import torch here
     from disent.util.seeds import seed
