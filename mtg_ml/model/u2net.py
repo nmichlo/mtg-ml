@@ -8,7 +8,7 @@ FROM: https://github.com/xuebinqin/U-2-Net/blob/master/model/u2net_refactor.py
 
 MODIFICATIONS:
 - cleaned up for use the mtg_ml
--
+- changed to recursive definition with multiple layers
 """
 
 
@@ -123,79 +123,18 @@ class RsuMid(nn.Module):
         self.mid_layer = mid_layer
 
     def forward(self, x: torch.Tensor):
-        # encoder & decoder
-        d = self.mid_layer(x)
-        # done!
-        return d
-
-
-# class Rsu(nn.Module):
-#     def __init__(
-#         self,
-#         num_layers: int,
-#         in_ch: int,
-#         mid_ch: int,
-#         out_ch: int,
-#         dilated: bool = False,
-#     ):
-#         super().__init__()
-#         self.num_layers = num_layers
-#         self.dilated = dilated
-#         self._make_layers(num_layers, in_ch, mid_ch, out_ch, dilated)
-#
-#     @staticmethod
-#     def _size_map(x: torch.Tensor, height: int, offset: bool = False):
-#         sizes = {}
-#         # recursive
-#         size = list(x.shape[-2:])
-#         for h in range(0, height - 1):
-#             sizes[h] = size
-#             size = [math.ceil(s / 2) for s in size]
-#         # done
-#         if offset:
-#             return {h + 1: s for h, s in sizes.items()}  # old style
-#         return sizes
-#
-#     def forward(self, x):
-#         sizes = self._size_map(x, self.num_layers - 1, offset=False)
-#         x = self.rebnconvin(x)
-#
-#         # U-Net like symmetric encoder-decoder structure
-#         def forward_layer(x, layer_idx: int):
-#             if layer_idx < self.num_layers - 1:
-#                 e = getattr(self, f'rebnconv{layer_idx}')(x)
-#
-#                 if not self.dilated and layer_idx < self.num_layers - 2:
-#                     m = self.downsample(e)
-#                     m = forward_layer(m, layer_idx + 1)
-#                 else:
-#                     m = forward_layer(e, layer_idx + 1)
-#
-#                 d = getattr(self, f'rebnconv{layer_idx}d')(torch.cat((m, e), 1))
-#
-#                 return _upsample_to_shape(d, sizes[layer_idx - 1]) if (not self.dilated and layer_idx > 0) else d
-#             else:
-#                 return getattr(self, f'rebnconv{layer_idx}')(x)
-#
-#         return x + forward_layer(x, layer_idx=0)
-#
-#     def _make_layers(self, num_layers: int, in_ch: int, mid_ch: int, out_ch: int, dilated: bool = False):
-#         self.rebnconvin = ConvBnReLU(in_ch, out_ch)
-#         self.downsample = nn.MaxPool2d(2, stride=2, ceil_mode=True)
-#
-#         self.rebnconv0 = ConvBnReLU(out_ch, mid_ch)
-#         self.rebnconv0d = ConvBnReLU(mid_ch * 2, out_ch)
-#
-#         for i in range(1, num_layers):
-#             dilate = 1 if (not dilated) else 2 ** i
-#             self.add_module(f'rebnconv{i}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
-#             self.add_module(f'rebnconv{i}d', ConvBnReLU(mid_ch * 2, mid_ch, dilate=dilate))
-#
-#         dilate = 2 if (not dilated) else (2 ** num_layers)
-#         self.add_module(f'rebnconv{num_layers}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
+        return self.mid_layer(x)
 
 
 class Rsu(nn.Module):
+    """
+    UNET acting as a residual (?) layer
+
+    x ──> conv ────── + ──> (out)
+           │          │
+           ╰─> UNET ──╯
+    """
+
     def __init__(
         self,
         num_layers: int,
@@ -335,7 +274,8 @@ class U2NetLayerCfg:
 
 class U2Net(nn.Module):
     """
-    Effectively a UNET of differing UNETs (RSU) acting at different scales.
+    Effectively a UNET of differing UNETs (RSU layers)
+    acting at different scales.
     """
 
     def __init__(
