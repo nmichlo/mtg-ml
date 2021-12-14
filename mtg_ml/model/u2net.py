@@ -1,204 +1,3 @@
-#                               Apache License
-#                         Version 2.0, January 2004
-#                      http://www.apache.org/licenses/
-#
-# TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
-#
-# 1. Definitions.
-#
-#    "License" shall mean the terms and conditions for use, reproduction,
-#    and distribution as defined by Sections 1 through 9 of this document.
-#
-#    "Licensor" shall mean the copyright owner or entity authorized by
-#    the copyright owner that is granting the License.
-#
-#    "Legal Entity" shall mean the union of the acting entity and all
-#    other entities that control, are controlled by, or are under common
-#    control with that entity. For the purposes of this definition,
-#    "control" means (i) the power, direct or indirect, to cause the
-#    direction or management of such entity, whether by contract or
-#    otherwise, or (ii) ownership of fifty percent (50%) or more of the
-#    outstanding shares, or (iii) beneficial ownership of such entity.
-#
-#    "You" (or "Your") shall mean an individual or Legal Entity
-#    exercising permissions granted by this License.
-#
-#    "Source" form shall mean the preferred form for making modifications,
-#    including but not limited to software source code, documentation
-#    source, and configuration files.
-#
-#    "Object" form shall mean any form resulting from mechanical
-#    transformation or translation of a Source form, including but
-#    not limited to compiled object code, generated documentation,
-#    and conversions to other media types.
-#
-#    "Work" shall mean the work of authorship, whether in Source or
-#    Object form, made available under the License, as indicated by a
-#    copyright notice that is included in or attached to the work
-#    (an example is provided in the Appendix below).
-#
-#    "Derivative Works" shall mean any work, whether in Source or Object
-#    form, that is based on (or derived from) the Work and for which the
-#    editorial revisions, annotations, elaborations, or other modifications
-#    represent, as a whole, an original work of authorship. For the purposes
-#    of this License, Derivative Works shall not include works that remain
-#    separable from, or merely link (or bind by name) to the interfaces of,
-#    the Work and Derivative Works thereof.
-#
-#    "Contribution" shall mean any work of authorship, including
-#    the original version of the Work and any modifications or additions
-#    to that Work or Derivative Works thereof, that is intentionally
-#    submitted to Licensor for inclusion in the Work by the copyright owner
-#    or by an individual or Legal Entity authorized to submit on behalf of
-#    the copyright owner. For the purposes of this definition, "submitted"
-#    means any form of electronic, verbal, or written communication sent
-#    to the Licensor or its representatives, including but not limited to
-#    communication on electronic mailing lists, source code control systems,
-#    and issue tracking systems that are managed by, or on behalf of, the
-#    Licensor for the purpose of discussing and improving the Work, but
-#    excluding communication that is conspicuously marked or otherwise
-#    designated in writing by the copyright owner as "Not a Contribution."
-#
-#    "Contributor" shall mean Licensor and any individual or Legal Entity
-#    on behalf of whom a Contribution has been received by Licensor and
-#    subsequently incorporated within the Work.
-#
-# 2. Grant of Copyright License. Subject to the terms and conditions of
-#    this License, each Contributor hereby grants to You a perpetual,
-#    worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-#    copyright license to reproduce, prepare Derivative Works of,
-#    publicly display, publicly perform, sublicense, and distribute the
-#    Work and such Derivative Works in Source or Object form.
-#
-# 3. Grant of Patent License. Subject to the terms and conditions of
-#    this License, each Contributor hereby grants to You a perpetual,
-#    worldwide, non-exclusive, no-charge, royalty-free, irrevocable
-#    (except as stated in this section) patent license to make, have made,
-#    use, offer to sell, sell, import, and otherwise transfer the Work,
-#    where such license applies only to those patent claims licensable
-#    by such Contributor that are necessarily infringed by their
-#    Contribution(s) alone or by combination of their Contribution(s)
-#    with the Work to which such Contribution(s) was submitted. If You
-#    institute patent litigation against any entity (including a
-#    cross-claim or counterclaim in a lawsuit) alleging that the Work
-#    or a Contribution incorporated within the Work constitutes direct
-#    or contributory patent infringement, then any patent licenses
-#    granted to You under this License for that Work shall terminate
-#    as of the date such litigation is filed.
-#
-# 4. Redistribution. You may reproduce and distribute copies of the
-#    Work or Derivative Works thereof in any medium, with or without
-#    modifications, and in Source or Object form, provided that You
-#    meet the following conditions:
-#
-#    (a) You must give any other recipients of the Work or
-#        Derivative Works a copy of this License; and
-#
-#    (b) You must cause any modified files to carry prominent notices
-#        stating that You changed the files; and
-#
-#    (c) You must retain, in the Source form of any Derivative Works
-#        that You distribute, all copyright, patent, trademark, and
-#        attribution notices from the Source form of the Work,
-#        excluding those notices that do not pertain to any part of
-#        the Derivative Works; and
-#
-#    (d) If the Work includes a "NOTICE" text file as part of its
-#        distribution, then any Derivative Works that You distribute must
-#        include a readable copy of the attribution notices contained
-#        within such NOTICE file, excluding those notices that do not
-#        pertain to any part of the Derivative Works, in at least one
-#        of the following places: within a NOTICE text file distributed
-#        as part of the Derivative Works; within the Source form or
-#        documentation, if provided along with the Derivative Works; or,
-#        within a display generated by the Derivative Works, if and
-#        wherever such third-party notices normally appear. The contents
-#        of the NOTICE file are for informational purposes only and
-#        do not modify the License. You may add Your own attribution
-#        notices within Derivative Works that You distribute, alongside
-#        or as an addendum to the NOTICE text from the Work, provided
-#        that such additional attribution notices cannot be construed
-#        as modifying the License.
-#
-#    You may add Your own copyright statement to Your modifications and
-#    may provide additional or different license terms and conditions
-#    for use, reproduction, or distribution of Your modifications, or
-#    for any such Derivative Works as a whole, provided Your use,
-#    reproduction, and distribution of the Work otherwise complies with
-#    the conditions stated in this License.
-#
-# 5. Submission of Contributions. Unless You explicitly state otherwise,
-#    any Contribution intentionally submitted for inclusion in the Work
-#    by You to the Licensor shall be under the terms and conditions of
-#    this License, without any additional terms or conditions.
-#    Notwithstanding the above, nothing herein shall supersede or modify
-#    the terms of any separate license agreement you may have executed
-#    with Licensor regarding such Contributions.
-#
-# 6. Trademarks. This License does not grant permission to use the trade
-#    names, trademarks, service marks, or product names of the Licensor,
-#    except as required for reasonable and customary use in describing the
-#    origin of the Work and reproducing the content of the NOTICE file.
-#
-# 7. Disclaimer of Warranty. Unless required by applicable law or
-#    agreed to in writing, Licensor provides the Work (and each
-#    Contributor provides its Contributions) on an "AS IS" BASIS,
-#    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-#    implied, including, without limitation, any warranties or conditions
-#    of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
-#    PARTICULAR PURPOSE. You are solely responsible for determining the
-#    appropriateness of using or redistributing the Work and assume any
-#    risks associated with Your exercise of permissions under this License.
-#
-# 8. Limitation of Liability. In no event and under no legal theory,
-#    whether in tort (including negligence), contract, or otherwise,
-#    unless required by applicable law (such as deliberate and grossly
-#    negligent acts) or agreed to in writing, shall any Contributor be
-#    liable to You for damages, including any direct, indirect, special,
-#    incidental, or consequential damages of any character arising as a
-#    result of this License or out of the use or inability to use the
-#    Work (including but not limited to damages for loss of goodwill,
-#    work stoppage, computer failure or malfunction, or any and all
-#    other commercial damages or losses), even if such Contributor
-#    has been advised of the possibility of such damages.
-#
-# 9. Accepting Warranty or Additional Liability. While redistributing
-#    the Work or Derivative Works thereof, You may choose to offer,
-#    and charge a fee for, acceptance of support, warranty, indemnity,
-#    or other liability obligations and/or rights consistent with this
-#    License. However, in accepting such obligations, You may act only
-#    on Your own behalf and on Your sole responsibility, not on behalf
-#    of any other Contributor, and only if You agree to indemnify,
-#    defend, and hold each Contributor harmless for any liability
-#    incurred by, or claims asserted against, such Contributor by reason
-#    of your accepting any such warranty or additional liability.
-#
-# END OF TERMS AND CONDITIONS
-#
-# APPENDIX: How to apply the Apache License to your work.
-#
-#    To apply the Apache License to your work, attach the following
-#    boilerplate notice, with the fields enclosed by brackets "[]"
-#    replaced with your own identifying information. (Don't include
-#    the brackets!)  The text should be enclosed in the appropriate
-#    comment syntax for the file format. We also recommend that a
-#    file or class name and description of purpose be included on the
-#    same "printed page" as the copyright notice for easier
-#    identification within third-party archives.
-#
-# Copyright 2020 Xuebin Qin et al.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """
 The code for our newly accepted paper in Pattern
@@ -221,7 +20,6 @@ from typing import Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
 
 
 # ========================================================================= #
@@ -231,19 +29,6 @@ import math
 
 def _upsample_to_shape(x: torch.Tensor, size):
     return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
-
-
-def _size_map(x: torch.Tensor, height: int, offset: bool = False):
-    sizes = {}
-    # recursive
-    size = list(x.shape[-2:])
-    for h in range(0, height-1):
-        sizes[h] = size
-        size = [math.ceil(s / 2) for s in size]
-    # done
-    if offset:
-        return {h+1: s for h, s in sizes.items()}  # old style
-    return sizes
 
 
 _ACTIVATIONS = {
@@ -273,13 +58,141 @@ class ConvBnReLU(nn.Module):
         dilate: int = 1,
     ):
         super(ConvBnReLU, self).__init__()
-
-        self.conv_s1 = nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, padding=1 * dilate, dilation=1 * dilate)
-        self.bn_s1 = nn.BatchNorm2d(out_ch)
-        self.relu_s1 = nn.ReLU(inplace=True)
+        self.conv = nn.Conv2d(in_channels=in_ch, out_channels=out_ch, kernel_size=3, padding=dilate, dilation=dilate)
+        self.bn = nn.BatchNorm2d(out_ch)
+        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        return self.relu_s1(self.bn_s1(self.conv_s1(x)))
+        return self.relu(self.bn(self.conv(x)))
+
+# ========================================================================= #
+# RSU                                                                       #
+# ========================================================================= #
+
+
+class RsuEncDec(nn.Module):
+
+    """
+    MODEL:
+    x ──> enc ─────────> + ──> dec ───> (main)
+           │             │
+         [down]         [up]
+           │             │
+           ╰─> [child] ──╯
+
+    NOTES:
+    - none of the layers should change the W & H of the tensors.
+    """
+
+    def __init__(self, enc_layer: nn.Module, dec_layer: nn.Module, child: Union['RsuEncDec', 'RsuMid'], resize_child: bool = True):
+        super().__init__()
+        self.resize_child = resize_child
+        # modules
+        self.enc_layer = enc_layer
+        self.child = child
+        self.dec_layer = dec_layer
+
+    def forward(self, x: torch.Tensor):
+        # encoder
+        e = self.enc_layer(x)
+        # downsample -> middle -> upsample
+        if self.resize_child:
+            m = F.max_pool2d(e, kernel_size=2, stride=2, ceil_mode=True)
+            m = self.child(m)
+            m = _upsample_to_shape(m, e.shape[2:])
+        else:
+            m = self.child(e)
+        # decoder
+        d = self.dec_layer(torch.cat((m, e), dim=1))
+        # done!
+        return d
+
+
+class RsuMid(nn.Module):
+
+    """
+    MODEL:
+    x ──> enc ──> (main)
+
+    NOTES:
+    - none of the layers should change the W & H of the tensors.
+    """
+
+    def __init__(self, mid_layer: nn.Module):
+        super().__init__()
+        self.mid_layer = mid_layer
+
+    def forward(self, x: torch.Tensor):
+        # encoder & decoder
+        d = self.mid_layer(x)
+        # done!
+        return d
+
+
+# class Rsu(nn.Module):
+#     def __init__(
+#         self,
+#         num_layers: int,
+#         in_ch: int,
+#         mid_ch: int,
+#         out_ch: int,
+#         dilated: bool = False,
+#     ):
+#         super().__init__()
+#         self.num_layers = num_layers
+#         self.dilated = dilated
+#         self._make_layers(num_layers, in_ch, mid_ch, out_ch, dilated)
+#
+#     @staticmethod
+#     def _size_map(x: torch.Tensor, height: int, offset: bool = False):
+#         sizes = {}
+#         # recursive
+#         size = list(x.shape[-2:])
+#         for h in range(0, height - 1):
+#             sizes[h] = size
+#             size = [math.ceil(s / 2) for s in size]
+#         # done
+#         if offset:
+#             return {h + 1: s for h, s in sizes.items()}  # old style
+#         return sizes
+#
+#     def forward(self, x):
+#         sizes = self._size_map(x, self.num_layers - 1, offset=False)
+#         x = self.rebnconvin(x)
+#
+#         # U-Net like symmetric encoder-decoder structure
+#         def forward_layer(x, layer_idx: int):
+#             if layer_idx < self.num_layers - 1:
+#                 e = getattr(self, f'rebnconv{layer_idx}')(x)
+#
+#                 if not self.dilated and layer_idx < self.num_layers - 2:
+#                     m = self.downsample(e)
+#                     m = forward_layer(m, layer_idx + 1)
+#                 else:
+#                     m = forward_layer(e, layer_idx + 1)
+#
+#                 d = getattr(self, f'rebnconv{layer_idx}d')(torch.cat((m, e), 1))
+#
+#                 return _upsample_to_shape(d, sizes[layer_idx - 1]) if (not self.dilated and layer_idx > 0) else d
+#             else:
+#                 return getattr(self, f'rebnconv{layer_idx}')(x)
+#
+#         return x + forward_layer(x, layer_idx=0)
+#
+#     def _make_layers(self, num_layers: int, in_ch: int, mid_ch: int, out_ch: int, dilated: bool = False):
+#         self.rebnconvin = ConvBnReLU(in_ch, out_ch)
+#         self.downsample = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+#
+#         self.rebnconv0 = ConvBnReLU(out_ch, mid_ch)
+#         self.rebnconv0d = ConvBnReLU(mid_ch * 2, out_ch)
+#
+#         for i in range(1, num_layers):
+#             dilate = 1 if (not dilated) else 2 ** i
+#             self.add_module(f'rebnconv{i}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
+#             self.add_module(f'rebnconv{i}d', ConvBnReLU(mid_ch * 2, mid_ch, dilate=dilate))
+#
+#         dilate = 2 if (not dilated) else (2 ** num_layers)
+#         self.add_module(f'rebnconv{num_layers}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
 
 
 class Rsu(nn.Module):
@@ -291,47 +204,32 @@ class Rsu(nn.Module):
         out_ch: int,
         dilated: bool = False,
     ):
-        super(Rsu, self).__init__()
+        super().__init__()
         self.num_layers = num_layers
         self.dilated = dilated
-        self._make_layers(num_layers, in_ch, mid_ch, out_ch, dilated)
+        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
+        # input channels
+        self.inp = ConvBnReLU(in_ch=in_ch, out_ch=out_ch, dilate=1)
+        # 1. middle stage is single conv
+        # 2. stage directly around middle does not resize
+        # 3. end stage adjusts channel sizes
+        self.unet = RsuMid(mid_layer=ConvBnReLU(mid_ch, mid_ch, dilate=(2 ** (num_layers-1)) if dilated else 2))
+        # create n-1 surrounding stages: i in [1, ..., num_layers-1]
+        for l in reversed(range(1, num_layers)):
+            inp = mid_ch if (l != 1) else out_ch
+            out = mid_ch
+            # add as child
+            self.unet = RsuEncDec(
+                enc_layer=ConvBnReLU(in_ch=inp,   out_ch=out, dilate=(2 ** (l-1)) if dilated else 1),
+                dec_layer=ConvBnReLU(in_ch=out*2, out_ch=inp, dilate=(2 ** (l-1)) if dilated else 1),
+                child=self.unet,
+                resize_child=(not dilated) and (l != num_layers-1)
+            )
 
     def forward(self, x):
-        sizes = _size_map(x, self.num_layers - 1, offset=False)
-        x = self.rebnconvin(x)
-
-        # U-Net like symmetric encoder-decoder structure
-        def forward_layer(x, layer_idx: int):
-            if layer_idx < self.num_layers - 1:
-                e = getattr(self, f'rebnconv{layer_idx}')(x)
-
-                if not self.dilated and layer_idx < self.num_layers - 2:
-                    m = forward_layer(self.downsample(e), layer_idx + 1)
-                else:
-                    m = forward_layer(e, layer_idx + 1)
-
-                d = getattr(self, f'rebnconv{layer_idx}d')(torch.cat((m, e), 1))
-
-                return _upsample_to_shape(d, sizes[layer_idx - 1]) if (not self.dilated and layer_idx > 0) else d
-            else:
-                return getattr(self, f'rebnconv{layer_idx}')(x)
-
-        return x + forward_layer(x, layer_idx=0)
-
-    def _make_layers(self, num_layers: int, in_ch: int, mid_ch: int, out_ch: int, dilated: bool = False):
-        self.rebnconvin = ConvBnReLU(in_ch, out_ch)
-        self.downsample = nn.MaxPool2d(2, stride=2, ceil_mode=True)
-
-        self.rebnconv0 = ConvBnReLU(out_ch, mid_ch)
-        self.rebnconv0d = ConvBnReLU(mid_ch * 2, out_ch)
-
-        for i in range(1, num_layers):
-            dilate = 1 if (not dilated) else 2 ** i
-            self.add_module(f'rebnconv{i}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
-            self.add_module(f'rebnconv{i}d', ConvBnReLU(mid_ch * 2, mid_ch, dilate=dilate))
-
-        dilate = 2 if (not dilated) else (2 ** num_layers)
-        self.add_module(f'rebnconv{num_layers}', ConvBnReLU(mid_ch, mid_ch, dilate=dilate))
+        hxin = self.inp(x)
+        hx1d = self.unet(hxin)
+        return hx1d + hxin
 
 
 # ========================================================================= #
@@ -362,16 +260,16 @@ class EncDecStage(nn.Module):
                ╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯
 
     NOTES:
-    - none of the layers should change the size of the model.
+    - none of the layers should change the W & H of the tensors.
     """
 
     def __init__(self, enc_layer: Rsu, dec_layer: Rsu, side_layer: nn.Module, child: Union['EncDecStage', 'MidStage']):
         super().__init__()
         # modules
         self.enc_layer = enc_layer
+        self.child = child
         self.dec_layer = dec_layer
         self.side_layer = side_layer
-        self.child = child
 
     def forward(self, x: torch.Tensor):
         # encoder
@@ -395,6 +293,9 @@ class MidStage(nn.Module):
     x ──> enc ──> (main)
            │
           side ──> (extra)
+
+    NOTES:
+    - none of the layers should change the W & H of the tensors.
     """
 
     def __init__(self, mid_layer: Rsu, side_layer: nn.Module):
@@ -433,6 +334,9 @@ class U2NetLayerCfg:
 
 
 class U2Net(nn.Module):
+    """
+    Effectively a UNET of differing UNETs (RSU) acting at different scales.
+    """
 
     def __init__(
         self,
@@ -459,19 +363,22 @@ class U2Net(nn.Module):
         self.unet = MidStage(mid_layer=rsu(cfg_mid), side_layer=out(cfg_mid))
         for enc_cfg, dec_cfg in zip(cfgs_encs, cfgs_decs):
             self.unet = EncDecStage(enc_layer=rsu(enc_cfg), dec_layer=rsu(dec_cfg), side_layer=out(dec_cfg), child=self.unet)
-        # output layer -- TODO: maybe increase the size of this layer?
+        # output layer
         self.outconv = nn.Conv2d(in_channels=self.num_stages * self.out_ch, out_channels=self.out_ch, kernel_size=1)
         # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
 
     def forward(self, x):
         # feed forward through unet and get side outputs
         _, outputs = self.unet(x)
-        # generate outputs: 1. rescale, 2. concatenate, 3. activate
+        # generate outputs:
+        # | 1. rescale
         outputs = [_upsample_to_shape(s, size=x.shape[2:]) for s in outputs]
+        # | 2. concatenate
         outputs = [self.outconv(torch.cat(outputs, dim=1)), *outputs]
+        # | 3. activate
         if self.out_activation is not None:
             outputs = [activate(s, self.out_activation) for s in outputs]
-        # done
+        # done!
         return outputs
 
 
