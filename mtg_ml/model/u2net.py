@@ -9,12 +9,12 @@ FROM: https://github.com/xuebinqin/U-2-Net/blob/master/model/u2net_refactor.py
 MODIFICATIONS:
 - cleaned up for use the mtg_ml
 - changed to recursive definition with multiple layers
+- combined encoder & decoder configs into single stage configs to make modifications easier -- automatically compute needed input channel sizes!
+- adjustable input and channel sizes
 """
-
-
+from argparse import Namespace
 from dataclasses import dataclass
 from typing import List
-from typing import Optional
 from typing import Union
 
 import torch
@@ -64,6 +64,7 @@ class ConvBnReLU(nn.Module):
 
     def forward(self, x):
         return self.relu(self.bn(self.conv(x)))
+
 
 # ========================================================================= #
 # RSU                                                                       #
@@ -180,20 +181,20 @@ class EncDecStage(nn.Module):
 
     """
     MODEL:
-    x ──> enc ─────────> + ──> dec ───> (main)
+    x ──> enc ─────────> + ──> dec ───> (out)
            │             │      │
-          down           up    side ──> (extra)
+          down           up    side ──> [extra_0] (list)
            │             │
            ╰─> [child] ──╯
 
     RECURSIVE MODEL:
-    x ──> enc ───────────────────────────────> + ──> dec ───> (main)
+    x ──> enc ───────────────────────────────> + ──> dec ───> (out)
            │                                   │      │
-          down                                 up     side ──> (extra)
-           │   ╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮    │
-           ╰─> ┊ enc ─────────> + ──> dec ┊ ───╯
-               ┊  │             │      │  ╰┄┄┄┄┄┄┄┄┄┄┄┄┄╮
-               ┊ down           up     side ──> (extra) ┊
+          down                                 up     side ─> [extra_0, extra_1]  (list)
+           │   ╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮    │            ╭─────────────╯
+           ╰─> ┊ enc ─────────> + ──> dec ┊ ───╯            │
+               ┊  │             │      │  ╰┄┄┄┄┄┄┄┄┄┄┄┄┄╮   │
+               ┊ down           up     side ────────────────╯
                ┊  │             │                       ┊
                ┊  ╰─> [child] ──╯                       ┊
                ╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯
@@ -257,19 +258,21 @@ class MidStage(nn.Module):
 
 
 @dataclass
-class U2NetLayerCfg:
-    # side layer
-    side_in_chn: Optional[int]
-    # rsu layer
-    rsu_height: int
-    rsu_in_ch: int
-    rsu_mid_ch: int
-    rsu_out_ch: int
-    rsu_dilated: bool = False
+class U2NetStageCfg:
+    layers: int
+    enc_mid_ch: int
+    enc_out_ch: int
+    dec_mid_ch: int
+    dec_out_ch: int
+    dilated: bool
 
-    @classmethod
-    def normalise(cls, *layers) -> List['U2NetLayerCfg']:
-        return [(layer if isinstance(layer, cls) else cls(**layer)) for layer in layers]
+
+@dataclass
+class U2NetMidCfg:
+    layers: int
+    mid_ch: int
+    out_ch: int
+    dilated: bool
 
 
 class U2Net(nn.Module):
@@ -280,32 +283,49 @@ class U2Net(nn.Module):
 
     def __init__(
         self,
-        enc_cfgs: List[Union[U2NetLayerCfg, dict]],
-        dec_cfgs: List[Union[U2NetLayerCfg, dict]],
+        stage_cfgs: List[U2NetStageCfg],  # should be in order from parent to child stages
+        mid_cfg: U2NetMidCfg,
+        in_ch: int,
         out_ch: int,
         out_activation: str = 'sigmoid',
     ):
         super().__init__()
         # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
-        # normalise configs -- layers should be pass in feed forward order, eg. encoders: 0, 1, 2, 3, 4, 5 and eg. decoders: 4, 3, 2, 1, 0
-        (cfg_mid, *cfgs_encs) = U2NetLayerCfg.normalise(*enc_cfgs)[::-1]  # [..., 5, 4, 3, 2, 1, 0]
-        (cfgs_decs)           = U2NetLayerCfg.normalise(*dec_cfgs)        # [...,    4, 3, 2, 1, 0]
-        assert len(cfgs_encs) == len(cfgs_decs)
-        # vars
+        # enc_in = parent_enc_out (OR `in_ch` if first stage)
+        # enc_out = <arg>
+        # dec_in = child_dec_out + enc_out
+        # dec_out = <arg>
+        # side_in = dec_out
+        # side_out = <arg: `out_ch`>
+        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
+        self.in_ch = in_ch
         self.out_ch = out_ch
         self.out_activation = out_activation
-        self.num_stages = len(cfgs_decs) + 1
+        self.num_stages = len(stage_cfgs) + 1
+        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
+        stage_cfgs = stage_cfgs[::-1]  # [ends, ..., mid] -> [mid, ..., ends]
+        # precompute input channels
+        parent_enc_out_chs = [cfg.enc_out_ch for cfg in stage_cfgs] + [self.in_ch]                 # number of channels passed to child (by the encoder)
+        child_dec_out_chs  = [None, mid_cfg.out_ch] + [cfg.dec_out_ch for cfg in stage_cfgs][:-1]  # number of channels output by stage (from the decoder) ... middle layer has no child, so None!
         # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
         # make layer fns
-        def rsu(cfg): return Rsu(num_layers=cfg.rsu_height, in_ch=cfg.rsu_in_ch, mid_ch=cfg.rsu_mid_ch, out_ch=cfg.rsu_out_ch, dilated=cfg.rsu_dilated)
-        def out(cfg): return nn.Conv2d(in_channels=cfg.side_in_chn, out_channels=self.out_ch, kernel_size=3, padding=1)
+        def out(dec_out_ch: int): return nn.Conv2d(in_channels=dec_out_ch, out_channels=self.out_ch, kernel_size=3, padding=1)
         # create stages
-        self.unet = MidStage(mid_layer=rsu(cfg_mid), side_layer=out(cfg_mid))
-        for enc_cfg, dec_cfg in zip(cfgs_encs, cfgs_decs):
-            self.unet = EncDecStage(enc_layer=rsu(enc_cfg), dec_layer=rsu(dec_cfg), side_layer=out(dec_cfg), child=self.unet)
-        # output layer
+        self.unet = MidStage(
+            mid_layer=Rsu(num_layers=mid_cfg.layers, in_ch=parent_enc_out_chs[0], mid_ch=mid_cfg.mid_ch, out_ch=mid_cfg.out_ch, dilated=mid_cfg.dilated),
+            side_layer=out(dec_out_ch=mid_cfg.out_ch),
+        )
+        for i, cfg in enumerate(stage_cfgs):
+            self.unet = EncDecStage(
+                enc_layer=Rsu(num_layers=cfg.layers, in_ch=parent_enc_out_chs[i+1],                 mid_ch=cfg.enc_mid_ch, out_ch=cfg.enc_out_ch, dilated=cfg.dilated),
+                dec_layer=Rsu(num_layers=cfg.layers, in_ch=cfg.enc_out_ch + child_dec_out_chs[i+1], mid_ch=cfg.dec_mid_ch, out_ch=cfg.dec_out_ch, dilated=cfg.dilated),
+                side_layer=out(dec_out_ch=cfg.dec_out_ch),
+                child=self.unet,
+            )
+        # output layer -- combine all the side outputs together into a single one... TODO: it feels like this should be larger, or two layers?
         self.outconv = nn.Conv2d(in_channels=self.num_stages * self.out_ch, out_channels=self.out_ch, kernel_size=1)
         # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
+
 
     def forward(self, x):
         # feed forward through unet and get side outputs
@@ -322,42 +342,32 @@ class U2Net(nn.Module):
         return outputs
 
 
-def U2NET_full(out_ch: int = 1, cls=U2Net):
-    enc_layer_cfgs = [
-        U2NetLayerCfg(rsu_height=7, rsu_in_ch=3,    rsu_mid_ch=32,  rsu_out_ch=64,  rsu_dilated=False, side_in_chn=None),
-        U2NetLayerCfg(rsu_height=6, rsu_in_ch=64,   rsu_mid_ch=32,  rsu_out_ch=128, rsu_dilated=False, side_in_chn=None),
-        U2NetLayerCfg(rsu_height=5, rsu_in_ch=128,  rsu_mid_ch=64,  rsu_out_ch=256, rsu_dilated=False, side_in_chn=None),
-        U2NetLayerCfg(rsu_height=4, rsu_in_ch=256,  rsu_mid_ch=128, rsu_out_ch=512, rsu_dilated=False, side_in_chn=None),
-        U2NetLayerCfg(rsu_height=4, rsu_in_ch=512,  rsu_mid_ch=256, rsu_out_ch=512, rsu_dilated=True,  side_in_chn=None),
-        U2NetLayerCfg(rsu_height=4, rsu_in_ch=512,  rsu_mid_ch=256, rsu_out_ch=512, rsu_dilated=True,  side_in_chn=512),
+def U2Net_full(in_ch: int = 3, out_ch: int = 1):
+    # stage configs
+    stage_cfgs = [
+        U2NetStageCfg(layers=7, enc_mid_ch=32,  enc_out_ch=64,  dec_mid_ch=16,  dec_out_ch=64,  dilated=False),
+        U2NetStageCfg(layers=6, enc_mid_ch=32,  enc_out_ch=128, dec_mid_ch=32,  dec_out_ch=64,  dilated=False),
+        U2NetStageCfg(layers=5, enc_mid_ch=64,  enc_out_ch=256, dec_mid_ch=64,  dec_out_ch=128, dilated=False),
+        U2NetStageCfg(layers=4, enc_mid_ch=128, enc_out_ch=512, dec_mid_ch=128, dec_out_ch=256, dilated=False),
+        U2NetStageCfg(layers=4, enc_mid_ch=256, enc_out_ch=512, dec_mid_ch=256, dec_out_ch=512, dilated=True),
     ]
-    dec_layer_cfgs = [
-        U2NetLayerCfg(rsu_height=4, rsu_in_ch=1024, rsu_mid_ch=256, rsu_out_ch=512, rsu_dilated=True,  side_in_chn=512),
-        U2NetLayerCfg(rsu_height=4, rsu_in_ch=1024, rsu_mid_ch=128, rsu_out_ch=256, rsu_dilated=False, side_in_chn=256),
-        U2NetLayerCfg(rsu_height=5, rsu_in_ch=512,  rsu_mid_ch=64,  rsu_out_ch=128, rsu_dilated=False, side_in_chn=128),
-        U2NetLayerCfg(rsu_height=6, rsu_in_ch=256,  rsu_mid_ch=32,  rsu_out_ch=64,  rsu_dilated=False, side_in_chn=64),
-        U2NetLayerCfg(rsu_height=7, rsu_in_ch=128,  rsu_mid_ch=16,  rsu_out_ch=64,  rsu_dilated=False, side_in_chn=64),
-    ]
-    return cls(enc_cfgs=enc_layer_cfgs, dec_cfgs=dec_layer_cfgs, out_ch=out_ch)
+    mid_cfg = U2NetMidCfg(layers=4, mid_ch=256, out_ch=512, dilated=True)
+    # make network
+    return U2Net(stage_cfgs=stage_cfgs, mid_cfg=mid_cfg, in_ch=in_ch, out_ch=out_ch)
 
 
-def U2NET_lite(out_ch: int = 1, cls=U2Net):
-    enc_layer_cfgs = [
-        U2NetLayerCfg(rsu_height=7, rsu_in_ch=3,  rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=None),
-        U2NetLayerCfg(rsu_height=6, rsu_in_ch=64, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=None),
-        U2NetLayerCfg(rsu_height=5, rsu_in_ch=64, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=None),
-        U2NetLayerCfg(rsu_height=4, rsu_in_ch=64, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=None),
-        U2NetLayerCfg(rsu_height=4, rsu_in_ch=64, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=True,  side_in_chn=None),
-        U2NetLayerCfg(rsu_height=4, rsu_in_ch=64, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=True,  side_in_chn=64),
+def U2Net_lite(in_ch: int = 3, out_ch: int = 1):
+    # stage configs
+    stage_cfgs = [
+        U2NetStageCfg(layers=7, enc_mid_ch=16, enc_out_ch=64, dec_mid_ch=16, dec_out_ch=64, dilated=False),
+        U2NetStageCfg(layers=6, enc_mid_ch=16, enc_out_ch=64, dec_mid_ch=16, dec_out_ch=64, dilated=False),
+        U2NetStageCfg(layers=5, enc_mid_ch=16, enc_out_ch=64, dec_mid_ch=16, dec_out_ch=64, dilated=False),
+        U2NetStageCfg(layers=4, enc_mid_ch=16, enc_out_ch=64, dec_mid_ch=16, dec_out_ch=64, dilated=False),
+        U2NetStageCfg(layers=4, enc_mid_ch=16, enc_out_ch=64, dec_mid_ch=16, dec_out_ch=64, dilated=True),
     ]
-    dec_layer_cfgs = [
-        U2NetLayerCfg(rsu_height=4, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=True,  side_in_chn=64),
-        U2NetLayerCfg(rsu_height=4, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=64),
-        U2NetLayerCfg(rsu_height=5, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=64),
-        U2NetLayerCfg(rsu_height=6, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=64),
-        U2NetLayerCfg(rsu_height=7, rsu_in_ch=128, rsu_mid_ch=16, rsu_out_ch=64, rsu_dilated=False, side_in_chn=64),
-    ]
-    return cls(enc_cfgs=enc_layer_cfgs, dec_cfgs=dec_layer_cfgs, out_ch=out_ch)
+    mid_cfg = U2NetMidCfg(layers=4, mid_ch=16, out_ch=64, dilated=True)
+    # make network
+    return U2Net(stage_cfgs=stage_cfgs, mid_cfg=mid_cfg, in_ch=in_ch, out_ch=out_ch)
 
 
 # ========================================================================= #
@@ -369,8 +379,8 @@ if __name__ == '__main__':
 
     x = torch.randn(1, 3, 256, 256, dtype=torch.float32)
 
-    model = U2NET_full()
-    outs = model.forward(x)
+    model = U2Net_lite()
+    outs = model(x)
 
     print([float(o.mean()) for o in outs])
     print([float(o.std()) for o in outs])
