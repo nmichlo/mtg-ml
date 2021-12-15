@@ -1,4 +1,3 @@
-
 """
 The code for our newly accepted paper in Pattern
 Recognition 2020: "U^2-Net: Going Deeper with Nested
@@ -12,14 +11,18 @@ MODIFICATIONS:
 - combined encoder & decoder configs into single stage configs to make modifications easier -- automatically compute needed input channel sizes!
 - adjustable input and channel sizes
 """
-from argparse import Namespace
+
+
 from dataclasses import dataclass
 from typing import List
+from typing import Optional
 from typing import Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from mtg_ml.util.pt import count_params
 
 
 # ========================================================================= #
@@ -216,14 +219,15 @@ class EncDecStage(nn.Module):
         e = self.enc_layer(x)
         # downsample -> middle -> upsample
         m = F.max_pool2d(e, kernel_size=2, stride=2, ceil_mode=True)
-        m, S = self.child(m)
+        D, S = self.child(m)
+        m = D[0]
         m = _upsample_to_shape(m, e.shape[2:])
         # decoder
         d = self.dec_layer(torch.cat((m, e), dim=1))
         # output
         s = self.side_layer(d)
         # done!
-        return d, [s] + S
+        return [d] + D, [s] + S
 
 
 class MidStage(nn.Module):
@@ -249,7 +253,7 @@ class MidStage(nn.Module):
         # output
         s = self.side_layer(d)
         # done!
-        return d, [s]
+        return [d], [s]
 
 
 # ========================================================================= #
@@ -285,64 +289,69 @@ class U2Net(nn.Module):
         self,
         stage_cfgs: List[U2NetStageCfg],  # should be in order from parent to child stages
         mid_cfg: U2NetMidCfg,
-        in_ch: int,
-        out_ch: int,
-        out_activation: str = 'sigmoid',
+        in_ch: int = 3,
+        out_ch: int = 1,
+        out_activation: Optional[str] = 'sigmoid',
     ):
         super().__init__()
-        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
-        # enc_in = parent_enc_out (OR `in_ch` if first stage)
-        # enc_out = <arg>
-        # dec_in = child_dec_out + enc_out
-        # dec_out = <arg>
-        # side_in = dec_out
-        # side_out = <arg: `out_ch`>
-        # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
+        # save hparams
         self.in_ch = in_ch
         self.out_ch = out_ch
         self.out_activation = out_activation
-        self.num_stages = len(stage_cfgs) + 1
+        self.stage_cfgs = stage_cfgs[::-1]  # [ends, ..., mid] -> [mid, ..., ends]
+        self.mid_cfg = mid_cfg
+        self.num_stages = len(self.stage_cfgs) + 1
         # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
-        stage_cfgs = stage_cfgs[::-1]  # [ends, ..., mid] -> [mid, ..., ends]
-        # precompute input channels
-        parent_enc_out_chs = [cfg.enc_out_ch for cfg in stage_cfgs] + [self.in_ch]                 # number of channels passed to child (by the encoder)
-        child_dec_out_chs  = [None, mid_cfg.out_ch] + [cfg.dec_out_ch for cfg in stage_cfgs][:-1]  # number of channels output by stage (from the decoder) ... middle layer has no child, so None!
+        # precompute input channels:
+        self.parent_enc_out_chs = tuple([cfg.enc_out_ch for cfg in self.stage_cfgs] + [self.in_ch])                 # number of channels passed to child (by the encoder)
+        self.child_dec_out_chs  = tuple([None, self.mid_cfg.out_ch] + [cfg.dec_out_ch for cfg in self.stage_cfgs][:-1])  # number of channels output by stage (from the decoder) ... middle layer has no child, so None!
         # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
-        # make layer fns
-        def out(dec_out_ch: int): return nn.Conv2d(in_channels=dec_out_ch, out_channels=self.out_ch, kernel_size=3, padding=1)
         # create stages
         self.unet = MidStage(
-            mid_layer=Rsu(num_layers=mid_cfg.layers, in_ch=parent_enc_out_chs[0], mid_ch=mid_cfg.mid_ch, out_ch=mid_cfg.out_ch, dilated=mid_cfg.dilated),
-            side_layer=out(dec_out_ch=mid_cfg.out_ch),
+            mid_layer=self._make_rsu_layer(num_layers=self.mid_cfg.layers, in_ch=self.parent_enc_out_chs[0], mid_ch=self.mid_cfg.mid_ch, out_ch=self.mid_cfg.out_ch, dilated=mid_cfg.dilated),
+            side_layer=self._make_side_layer(dec_out_ch=self.mid_cfg.out_ch),
         )
-        for i, cfg in enumerate(stage_cfgs):
+        for i, cfg in enumerate(self.stage_cfgs):
             self.unet = EncDecStage(
-                enc_layer=Rsu(num_layers=cfg.layers, in_ch=parent_enc_out_chs[i+1],                 mid_ch=cfg.enc_mid_ch, out_ch=cfg.enc_out_ch, dilated=cfg.dilated),
-                dec_layer=Rsu(num_layers=cfg.layers, in_ch=cfg.enc_out_ch + child_dec_out_chs[i+1], mid_ch=cfg.dec_mid_ch, out_ch=cfg.dec_out_ch, dilated=cfg.dilated),
-                side_layer=out(dec_out_ch=cfg.dec_out_ch),
+                enc_layer=self._make_rsu_layer(num_layers=cfg.layers, in_ch=self.parent_enc_out_chs[i+1],                 mid_ch=cfg.enc_mid_ch, out_ch=cfg.enc_out_ch, dilated=cfg.dilated),
+                dec_layer=self._make_rsu_layer(num_layers=cfg.layers, in_ch=cfg.enc_out_ch + self.child_dec_out_chs[i+1], mid_ch=cfg.dec_mid_ch, out_ch=cfg.dec_out_ch, dilated=cfg.dilated),
+                side_layer=self._make_side_layer(dec_out_ch=cfg.dec_out_ch),
                 child=self.unet,
             )
-        # output layer -- combine all the side outputs together into a single one... TODO: it feels like this should be larger, or two layers?
-        self.outconv = nn.Conv2d(in_channels=self.num_stages * self.out_ch, out_channels=self.out_ch, kernel_size=1)
+        # output layer -- combine all the side outputs together into a single one...
+        self.out = self._make_output_layer()
         # ~=~=~=~=~=~=~=~=~=~=~=~=~ #
-
 
     def forward(self, x):
         # feed forward through unet and get side outputs
-        _, outputs = self.unet(x)
+        _, S = self.unet(x)
         # generate outputs:
         # | 1. rescale
-        outputs = [_upsample_to_shape(s, size=x.shape[2:]) for s in outputs]
-        # | 2. concatenate
-        outputs = [self.outconv(torch.cat(outputs, dim=1)), *outputs]
+        S = [_upsample_to_shape(s, size=x.shape[2:]) for s in S]
+        # | 2. concatenate & activate | TODO: this feels odd, should probably concat outputs from decoders, not side outputs, but still train individual stages on side outputs
+        S = [self.out(torch.cat(S, dim=1)), *S]
         # | 3. activate
         if self.out_activation is not None:
-            outputs = [activate(s, self.out_activation) for s in outputs]
+            S = [activate(s, self.out_activation) for s in S]
         # done!
-        return outputs
+        return S
+
+    def _make_rsu_layer(self, num_layers: int, in_ch: int, mid_ch: int, out_ch: int, dilated: bool):
+        return Rsu(num_layers=num_layers, in_ch=in_ch, mid_ch=mid_ch, out_ch=out_ch, dilated=dilated)
+
+    def _make_side_layer(self, dec_out_ch: int):
+        return nn.Conv2d(in_channels=dec_out_ch, out_channels=self.out_ch, kernel_size=3, padding=1)  # TODO: a single conv layer feels odd, should maybe have an additional layer?
+
+    def _make_output_layer(self):
+        return nn.Conv2d(in_channels=self.num_stages * self.out_ch, out_channels=self.out_ch, kernel_size=1)  # TODO: a single conv layer feels odd, should maybe have a larger receptive field and an additional layer?
 
 
-def U2Net_full(in_ch: int = 3, out_ch: int = 1):
+# ========================================================================= #
+# U2Net Factory                                                             #
+# ========================================================================= #
+
+
+def make_u2net_full(in_ch: int = 3, out_ch: int = 1, out_activation: Optional[str] = 'sigmoid', cls=U2Net, **cls_kwargs):
     # stage configs
     stage_cfgs = [
         U2NetStageCfg(layers=7, enc_mid_ch=32,  enc_out_ch=64,  dec_mid_ch=16,  dec_out_ch=64,  dilated=False),
@@ -353,10 +362,10 @@ def U2Net_full(in_ch: int = 3, out_ch: int = 1):
     ]
     mid_cfg = U2NetMidCfg(layers=4, mid_ch=256, out_ch=512, dilated=True)
     # make network
-    return U2Net(stage_cfgs=stage_cfgs, mid_cfg=mid_cfg, in_ch=in_ch, out_ch=out_ch)
+    return cls(stage_cfgs=stage_cfgs, mid_cfg=mid_cfg, in_ch=in_ch, out_ch=out_ch, out_activation=out_activation, **cls_kwargs)
 
 
-def U2Net_lite(in_ch: int = 3, out_ch: int = 1):
+def make_u2net_lite(in_ch: int = 3, out_ch: int = 1, out_activation: Optional[str] = 'sigmoid', cls=U2Net, **cls_kwargs):
     # stage configs
     stage_cfgs = [
         U2NetStageCfg(layers=7, enc_mid_ch=16, enc_out_ch=64, dec_mid_ch=16, dec_out_ch=64, dilated=False),
@@ -367,7 +376,79 @@ def U2Net_lite(in_ch: int = 3, out_ch: int = 1):
     ]
     mid_cfg = U2NetMidCfg(layers=4, mid_ch=16, out_ch=64, dilated=True)
     # make network
-    return U2Net(stage_cfgs=stage_cfgs, mid_cfg=mid_cfg, in_ch=in_ch, out_ch=out_ch)
+    return cls(stage_cfgs=stage_cfgs, mid_cfg=mid_cfg, in_ch=in_ch, out_ch=out_ch, out_activation=out_activation, **cls_kwargs)
+
+
+# ========================================================================= #
+# Custom U2Net                                                              #
+# ========================================================================= #
+
+
+class U2NetAlt(U2Net):
+
+    OUTPUT_LAYER_TYPES = ('default', 'conv1', 'conv3+conv1')
+
+    def __init__(
+        self,
+        stage_cfgs: List[U2NetStageCfg],
+        mid_cfg: U2NetMidCfg,
+        in_ch: int,
+        out_ch: int,
+        out_activation: str = 'sigmoid',
+        # custom
+        out_layer_type: str = 'default',
+        out_layers_ch: Optional[int] = None,
+    ):
+        if out_layer_type not in self.OUTPUT_LAYER_TYPES:
+            raise KeyError(f'invalid out_layer_type={repr(out_layer_type)}, must be one of: {sorted(self.OUTPUT_LAYER_TYPES)}')
+        self.out_layer_type = out_layer_type
+        self.out_layers_ch = out_layers_ch
+        # initialise
+        super().__init__(stage_cfgs=stage_cfgs, mid_cfg=mid_cfg, in_ch=in_ch, out_ch=out_ch, out_activation=out_activation)
+        # make output layers -- this should be similar to side channels
+        if self.out_layers_ch is not None:
+            self.out_layers = nn.ModuleList([self._make_pre_out_layer(dec_out_ch=dec_out_ch) for dec_out_ch in self.child_dec_out_chs[1:]])
+
+    def _make_pre_out_layer(self, dec_out_ch: int):
+        return nn.Sequential(
+            nn.Conv2d(in_channels=dec_out_ch, out_channels=self.out_layers_ch, kernel_size=3, padding=1),
+            nn.ReLU(True)
+        )
+
+    def _make_output_layer(self):
+        # get the number of input channels
+        in_ch = self.num_stages * (self.out_ch if (self.out_layers_ch is None) else self.out_layers_ch)
+        # get the type of layer
+        if self.out_layer_type in ['conv3+conv1']:
+            return nn.Sequential(
+                nn.Conv2d(in_channels=in_ch, out_channels=in_ch, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(in_channels=in_ch, out_channels=self.out_ch, kernel_size=1),
+            )
+        elif self.out_layer_type in ['default', 'conv1']:
+            return nn.Conv2d(in_channels=in_ch, out_channels=self.out_ch, kernel_size=1)
+        else:
+            raise RuntimeError('this should never happen!')
+
+    def forward(self, x):
+        # feed forward through unet and get side outputs
+        D, S = self.unet(x)
+        # generate outputs:
+        # | 1. rescale
+        S = [_upsample_to_shape(s, size=x.shape[2:]) for s in S]
+        # | 2.a activate
+        if self.out_layers_ch is None:
+            s = self.out(torch.cat(S, dim=1))
+        else:
+            D = [_upsample_to_shape(out_layer(d), size=x.shape[2:]) for d, out_layer in zip(D, self.out_layers)]
+            s = self.out(torch.cat(D, dim=1))
+        # | 2.b concatenate
+        S = [s, *S]
+        # | 3. activate
+        if self.out_activation is not None:
+            S = [activate(s, self.out_activation) for s in S]
+        # done!
+        return S
 
 
 # ========================================================================= #
@@ -379,9 +460,18 @@ if __name__ == '__main__':
 
     x = torch.randn(1, 3, 256, 256, dtype=torch.float32)
 
-    model = U2Net_lite()
-    outs = model(x)
+    model = make_u2net_lite()
+    print(count_params(model))
+    model = make_u2net_lite(cls=U2NetAlt, out_layer_type='conv1',       out_layers_ch=None)
+    print(count_params(model))
+    model = make_u2net_lite(cls=U2NetAlt, out_layer_type='conv3+conv1', out_layers_ch=None)
+    print(count_params(model))
+    model = make_u2net_lite(cls=U2NetAlt, out_layer_type='conv1',       out_layers_ch=8)
+    print(count_params(model))
+    model = make_u2net_lite(cls=U2NetAlt, out_layer_type='conv3+conv1', out_layers_ch=8)
+    print(count_params(model))
 
+    outs = model(x)
     print([float(o.mean()) for o in outs])
     print([float(o.std()) for o in outs])
     print([tuple(o.shape) for o in outs])
