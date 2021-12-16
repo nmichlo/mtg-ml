@@ -32,7 +32,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Normal
 
-from mtg_ml.nn.components import Activation
+from mtg_ml.nn.components import ActAndNorm
 from mtg_ml.nn.components import NormalDist
 
 
@@ -44,7 +44,7 @@ from mtg_ml.nn.components import NormalDist
 def ConvDown(in_channels: int, out_channels: int, kernel_size: int = 4, last_activation: bool = False):
     return nn.Sequential(
         nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=2, padding=(kernel_size-1)//2),
-        *([Activation(shape_or_features=out_channels)] if last_activation else []),
+        *([ActAndNorm(shape_or_features=out_channels)] if last_activation else []),
     )
 
 # def ConvDown(in_channels: int, out_channels: int, kernel_size: int = 3):
@@ -59,7 +59,7 @@ def ConvDown(in_channels: int, out_channels: int, kernel_size: int = 4, last_act
 def ConvUp(in_channels: int, out_channels: int, kernel_size: int = 4, last_activation: bool = True):
     return nn.Sequential(
         nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=2, padding=(kernel_size-1)//2),
-        *([Activation(shape_or_features=None)] if last_activation else []),
+        *([ActAndNorm(shape_or_features=None)] if last_activation else []),
     )
 
 # def ConvUp(in_channels: int, out_channels: int, kernel_size: int = 3, last_activation=True):
@@ -87,7 +87,7 @@ def ReprDown(in_shape: Sequence[int], hidden_size: Optional[int], out_size: int)
         return nn.Sequential(
                 nn.Flatten(),
             nn.Linear(int(np.prod(in_shape)), hidden_size),
-                Activation(),
+                ActAndNorm(),
             nn.Linear(hidden_size, out_size),
         )
 
@@ -96,15 +96,15 @@ def ReprUp(in_size: int, hidden_size: Optional[int], out_shape: Sequence[int]):
     if hidden_size is None:
         return nn.Sequential(
             nn.Linear(in_size, int(np.prod(out_shape))),
-                Activation(),
+                ActAndNorm(),
                 nn.Unflatten(dim=1, unflattened_size=out_shape),
         )
     else:
         return nn.Sequential(
             nn.Linear(in_size, hidden_size),
-                Activation(),
+                ActAndNorm(),
             nn.Linear(hidden_size, int(np.prod(out_shape))),
-                Activation(),
+                ActAndNorm(),
                 nn.Unflatten(dim=1, unflattened_size=out_shape),
         )
 

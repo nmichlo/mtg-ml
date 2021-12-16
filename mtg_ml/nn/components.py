@@ -37,31 +37,44 @@ from torch.distributions import Normal
 # ========================================================================= #
 
 
-def Activation(shape_or_features: Optional[Union[Sequence[int], int]] = None, activation: Optional[str] = 'leaky_relu', norm: Optional[str] = 'instance'):
+def Act(activation: str = 'leaky_relu'):
+    if activation == 'swish':            return Swish()
+    elif activation == 'leaky_relu':     return nn.LeakyReLU(inplace=True)
+    elif activation == 'leaky_relu_0.2': return nn.LeakyReLU(0.2, inplace=True)
+    elif activation == 'relu':           return nn.ReLU(inplace=True)
+    elif activation == 'relu6':          return nn.ReLU6(inplace=True)
+    else:
+        raise KeyError(f'invalid activation mode: {activation}')
+
+
+def Norm(shape_or_features: Union[Sequence[int], int] = None, norm: str = 'instance'):
+    # get components
+    if isinstance(shape_or_features, int):
+        C, H, W = shape_or_features, None, None
+    else:
+        C, H, W = shape_or_features
+    # get norm layers
+    if norm == 'instance':    return nn.InstanceNorm2d(num_features=C, momentum=0.05)
+    elif norm == 'batch':     return nn.BatchNorm2d(num_features=C,    momentum=0.05)
+    elif norm == 'layer_hw':  return nn.LayerNorm(normalized_shape=[H, W])
+    elif norm == 'layer_chw': return nn.LayerNorm(normalized_shape=[C, H, W])
+    else:
+        raise KeyError(f'invalid norm mode: {norm}')
+
+
+def ActAndNorm(shape_or_features: Optional[Union[Sequence[int], int]] = None, activation: Optional[str] = 'leaky_relu', norm: Optional[str] = 'instance'):
     layers = []
     # make norm layer
     if (norm is not None) and (shape_or_features is not None):
-        # get components
-        if isinstance(shape_or_features, int):
-            C, H, W = shape_or_features, None, None
-        else:
-            C, H, W = shape_or_features
-        # get norm layers
-        if norm == 'instance':    layers.append(nn.InstanceNorm2d(num_features=C, momentum=0.05))
-        elif norm == 'batch':     layers.append(nn.BatchNorm2d(num_features=C,    momentum=0.05))
-        elif norm == 'layer_hw':  layers.append(nn.LayerNorm(normalized_shape=[H, W]))
-        elif norm == 'layer_chw': layers.append(nn.LayerNorm(normalized_shape=[C, H, W]))
-        else:                     raise KeyError(f'invalid norm mode: {norm}')
+        layers.append(Norm(shape_or_features=shape_or_features, norm=norm))
     # make activation
     if activation is not None:
-        if activation == 'swish':        layers.append(Swish())
-        elif activation == 'leaky_relu': layers.append(nn.LeakyReLU(inplace=True))
-        elif activation == 'relu':       layers.append(nn.ReLU(inplace=True))
-        elif activation == 'relu6':      layers.append(nn.ReLU6(inplace=True))
-        else:                            raise KeyError(f'invalid activation mode: {activation}')
+        layers.append(Act(activation=activation))
     # return model
-    if layers: return nn.Sequential(*layers)
-    else:      return nn.Identity()
+    if layers:
+        return nn.Sequential(*layers)
+    else:
+        return nn.Identity()
 
 
 # ========================================================================= #

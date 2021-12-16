@@ -28,3 +28,8 @@ hydra:
   sweep:
     dir: ${hydra.job.env_set.ML_OUT_ROOT}/${next_num:${hydra.job.env_set.ML_OUT_ROOT}}__${now:%Y-%m-%d--%H-%M-%S}
     subdir: ${hydra.job.num}
+
+# override the trainer strategy
+trainer:
+  gpus: 1
+  strategy: "horovod"

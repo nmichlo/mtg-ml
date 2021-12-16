@@ -4,14 +4,16 @@ system_cls:
   _target_: mtg_ml.framework.SoftIntroVaeSystem
   # model
   z_size: 256
+  model_double_fc: FALSE
+  activation: leaky_relu_0.2  # leaky_relu_0.2, leaky_relu, swish
   # training
   lr_enc: 2e-4
   lr_dec: 2e-4
-  recon_loss: "mse"
+  recon_loss: "mse"  # mse, mse_laplace_0.25, mse_laplace_0.5
   # loss scaling
   beta_kl: 1.0
   beta_rec: 1.0  # don't really adjust this
-  beta_neg: 1024.0
+  beta_neg: 1024.0  # seems to correspond to image size, is this a code bug? Maybe model size or capacity?
   gamma_r: 1e-8
   # dataset_settings:
   img_size: ${data.meta.img_size}
@@ -20,3 +22,8 @@ system_cls:
   # unimplemented:
   # exit_on_negative_diff: bool = False,  # TODO: implement
   # training_measure_fid: bool = False,   # TODO: implement
+
+
+# 32:  (32, 64, 128)               beta_kl=1.0, beta_rec=1.0, beta_neg=256    lr=0.001
+# 64:  (32, 64, 128, 256)          beta_kl=1.0, beta_rec=1.0, beta_neg=1024   lr=0.001
+# 256: (16, 32, 48, 64, 128, 256)  beta_kl=1.0, beta_rec=1.0, beta_neg=16384  (lr=0.001 seems too high)

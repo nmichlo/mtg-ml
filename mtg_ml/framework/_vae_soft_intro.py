@@ -16,16 +16,18 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from mtg_ml import DATASET_ROOT
+from mtg_ml.nn.components import Act
 from mtg_ml.nn.model import BaseGaussianVaeModel
 from mtg_ml.nn.loss import get_recon_loss
 from mtg_ml.nn.loss import kl_div
+
+from mtg_ml.util.ptl import MlSystem
+from mtg_ml.util.transforms import get_image_batch
 
 
 # ========================================================================= #
 # Model                                                                     #
 # ========================================================================= #
-from mtg_ml.util.ptl import MlSystem
-from mtg_ml.util.transforms import get_image_batch
 
 
 class ResidualBlock(nn.Module):
@@ -36,22 +38,29 @@ class ResidualBlock(nn.Module):
     FROM: https://github.com/taldatech/soft-intro-vae-pytorch
     """
 
-    def __init__(self, inc=64, outc=64, groups=1, scale=1.0):
-        super(ResidualBlock, self).__init__()
+    def __init__(
+        self,
+        inc: int = 64,
+        outc: int = 64,
+        groups: int = 1,
+        scale: float = 1.0,
+        activation: str = 'leaky_relu_0.2',
+    ):
+        super().__init__()
 
         midc = int(outc * scale)
 
-        if inc is not outc:
+        if inc != outc:
             self.conv_expand = nn.Conv2d(in_channels=inc, out_channels=outc, kernel_size=1, stride=1, padding=0, groups=1, bias=False)
         else:
             self.conv_expand = nn.Identity()
 
         self.conv1 = nn.Conv2d(in_channels=inc, out_channels=midc, kernel_size=3, stride=1, padding=1, groups=groups, bias=False)
         self.bn1   = nn.BatchNorm2d(midc)
-        self.relu1 = nn.LeakyReLU(0.2, inplace=True)
+        self.relu1 = Act(activation=activation)
         self.conv2 = nn.Conv2d(in_channels=midc, out_channels=outc, kernel_size=3, stride=1, padding=1, groups=groups, bias=False)
         self.bn2   = nn.BatchNorm2d(outc)
-        self.relu2 = nn.LeakyReLU(0.2, inplace=True)
+        self.relu2 = Act(activation=activation)
 
     def forward(self, x):
         skip = self.conv_expand(x)
@@ -70,26 +79,34 @@ class SoftIntroEncoder(nn.Module):
     FROM: https://github.com/taldatech/soft-intro-vae-pytorch
     """
 
-    def __init__(self, img_size: int = 256, img_chn: int = 3, z_size: int = 512, double_fc: bool = False, conv_channels=(64, 128, 256, 512, 512, 512)):
-        super(SoftIntroEncoder, self).__init__()
+    def __init__(
+        self,
+        img_size: int = 256,
+        img_chn: int = 3,
+        z_size: int = 512,
+        double_fc: bool = False,
+        conv_channels=(64, 128, 256, 512, 512, 512),
+        activation: str = 'leaky_relu_0.2',
+    ):
+        super().__init__()
 
         self.img_chn = img_chn
         self.img_size = img_size
         cc = conv_channels[0]
 
         self.main = nn.Sequential(
-            nn.Conv2d(img_chn, cc, 5, 1, 2, bias=False),
+            nn.Conv2d(img_chn, cc, kernel_size=5, stride=1, padding=2, bias=False),
             nn.BatchNorm2d(cc),
-            nn.LeakyReLU(0.2),
+            Act(activation=activation),
             nn.AvgPool2d(2),
         )
 
         sz = img_size // 2
         for ch in conv_channels[1:]:
-            self.main.add_module(f'res_in_{sz}',     ResidualBlock(cc, ch, scale=1.0))
+            self.main.add_module(f'res_in_{sz}',     ResidualBlock(cc, ch, scale=1.0, activation=activation))
             self.main.add_module(f'down_to_{sz//2}', nn.AvgPool2d(2))
             cc, sz = ch, sz // 2
-        self.main.add_module(f'res_in_{sz}', ResidualBlock(cc, cc, scale=1.0))
+        self.main.add_module(f'res_in_{sz}', ResidualBlock(cc, cc, scale=1.0, activation=activation))
 
         # compute input shape to fcn | feed forward data!
         self.conv_output_size = self.main(torch.zeros(1, img_chn, img_size, img_size)).shape[1:]
@@ -100,7 +117,7 @@ class SoftIntroEncoder(nn.Module):
         if double_fc:
             self.fc = nn.Sequential(
                 nn.Linear(num_fc_features, int(1.5 * z_size)),
-                nn.ReLU(True),
+                Act(activation=activation),
                 nn.Linear(int(1.5 * z_size), 2 * z_size),
             )
         else:
@@ -117,8 +134,17 @@ class SoftIntroDecoder(nn.Module):
     FROM: https://github.com/taldatech/soft-intro-vae-pytorch
     """
 
-    def __init__(self, conv_input_size, img_size=256, img_chn=3, z_size=512, double_fc: bool = False, conv_channels=(64, 128, 256, 512, 512, 512)):
-        super(SoftIntroDecoder, self).__init__()
+    def __init__(
+        self,
+        conv_input_size,
+        img_size: int = 256,
+        img_chn: int = 3,
+        z_size: int = 512,
+        double_fc: bool = False,
+        conv_channels=(64, 128, 256, 512, 512, 512),
+        activation: str = 'leaky_relu_0.2'
+    ):
+        super().__init__()
         self.img_chn = img_chn
         self.img_size = img_size
         cc = conv_channels[-1]
@@ -128,33 +154,28 @@ class SoftIntroDecoder(nn.Module):
         num_fc_features = int(np.prod(conv_input_size))
         print(f'DEC: conv_input_size={self.conv_input_size} [{num_fc_features}]')
 
-        self.fc = nn.Sequential(
-            nn.Linear(z_size, num_fc_features),
-            nn.ReLU(True),
-        )
-
         if double_fc:
             self.fc = nn.Sequential(
                 nn.Linear(z_size, int(1.5 * z_size)),
-                nn.ReLU(True),
+                Act(activation=activation),
                 nn.Linear(int(1.5 * z_size), num_fc_features),
-                nn.ReLU(True),
+                Act(activation=activation),
             )
         else:
             self.fc = nn.Sequential(
                 nn.Linear(z_size, num_fc_features),
-                nn.ReLU(True),
+                Act(activation=activation),
             )
 
         sz = 4
         self.main = nn.Sequential()
         for ch in conv_channels[::-1]:
-            self.main.add_module(f'res_in_{sz}',  ResidualBlock(cc, ch, scale=1.0))
+            self.main.add_module(f'res_in_{sz}',  ResidualBlock(cc, ch, scale=1.0, activation=activation))
             self.main.add_module(f'up_to_{sz*2}', nn.Upsample(scale_factor=2, mode='nearest'))
             cc, sz = ch, sz * 2
 
-        self.main.add_module(f'res_in_{sz}', ResidualBlock(cc, cc, scale=1.0))
-        self.main.add_module('predict', nn.Conv2d(cc, img_chn, 5, 1, 2))
+        self.main.add_module(f'res_in_{sz}', ResidualBlock(cc, cc, scale=1.0, activation=activation))
+        self.main.add_module('predict', nn.Conv2d(cc, img_chn, kernel_size=5, stride=1, padding=2))
 
     def forward(self, z):
         z = z.view(z.size(0), -1)
@@ -171,11 +192,19 @@ class SoftIntroDecoder(nn.Module):
 
 class SoftIntroVaeModel(BaseGaussianVaeModel):
 
-    def __init__(self, img_size: int = 256, img_chn: int = 3, z_size: int = 512, conv_channels=(64, 128, 256, 512, 512, 512), double_fc: bool = False):
-        super(SoftIntroVaeModel, self).__init__()
+    def __init__(
+        self,
+        img_size: int = 256,
+        img_chn: int = 3,
+        z_size: int = 512,
+        conv_channels=(64, 128, 256, 512, 512, 512),
+        double_fc: bool = False,
+        activation: str = 'leaky_relu_0.2',
+    ):
+        super().__init__()
         self.z_size = z_size
-        self._encoder = SoftIntroEncoder(img_size=img_size, img_chn=img_chn, z_size=z_size, double_fc=double_fc, conv_channels=conv_channels)
-        self._decoder = SoftIntroDecoder(img_size=img_size, img_chn=img_chn, z_size=z_size, double_fc=double_fc, conv_channels=conv_channels, conv_input_size=self._encoder.conv_output_size)
+        self._encoder = SoftIntroEncoder(img_size=img_size, img_chn=img_chn, z_size=z_size, double_fc=double_fc, activation=activation, conv_channels=conv_channels)
+        self._decoder = SoftIntroDecoder(img_size=img_size, img_chn=img_chn, z_size=z_size, double_fc=double_fc, activation=activation, conv_channels=conv_channels, conv_input_size=self._encoder.conv_output_size)
 
     def _enc(self, x):
         return self._encoder(x)
@@ -196,6 +225,7 @@ class SoftIntroVaeSystem(MlSystem):
         # model
             z_size: int = 128,
             model_double_fc: bool = True,
+            activation: str = 'leaky_relu_0.2',
         # training
             lr_enc: float = 2e-4,
             lr_dec: float = 2e-4,
@@ -225,6 +255,7 @@ class SoftIntroVaeSystem(MlSystem):
             z_size=self.hparams.z_size,
             conv_channels=self.hparams.conv_channels,
             double_fc=self.hparams.model_double_fc,
+            activation=self.hparams.activation,
         )
 
     def configure_optimizers(self):

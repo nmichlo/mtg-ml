@@ -30,7 +30,7 @@ import torch
 import torch.nn as nn
 from disent.nn.weights import init_model_weights
 
-from mtg_ml.nn.components import Activation
+from mtg_ml.nn.components import ActAndNorm
 from mtg_ml.nn.model import BaseGaussianVaeModel
 from mtg_ml.nn.model import ReprDown
 from mtg_ml.nn.model import ReprUp
@@ -144,7 +144,7 @@ class AutoEncoderSkips(BaseGaussianVaeModel):
             return int((channel_dec_mul * channel_start) * (channel_mul**i))
 
         def Act(shape_or_features):
-            return Activation(shape_or_features=shape_or_features, activation=activation, norm=norm)
+            return ActAndNorm(shape_or_features=shape_or_features, activation=activation, norm=norm)
 
         # skip connection upsampling/downsampling
         Pooling  = {'ave':      nn.AvgPool2d,            'max':     nn.MaxPool2d}[skip_downsample]

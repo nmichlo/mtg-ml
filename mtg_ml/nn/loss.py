@@ -85,10 +85,11 @@ class LaplaceMseLoss(nn.Module):
     # TODO: move this into disent
     """
 
+    _kernel: torch.Tensor
+
     def __init__(self, freq_ratio=0.5):
         super().__init__()
         self._ratio = freq_ratio
-        self._kernel = None
         # create kernel
         kernel = torch.as_tensor([
             [0,  1,  0],
