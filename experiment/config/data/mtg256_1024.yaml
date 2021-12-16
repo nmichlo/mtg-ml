@@ -1,0 +1,28 @@
+name: mtg64
+
+module_cls:
+  _target_: mtg_ml.util.ptl.GenericDataModule
+  _recursive_: FALSE
+
+  batch_size: ${settings.data.batch_size}
+  num_workers: 4
+  dataset:
+    _target_: mtg_ml.util.pt.RandomDataSubset
+    use_number: 1024
+    dataset:
+      _target_: disent.dataset.data.Hdf5Dataset
+      h5_path: '${oc.env:ML_DATA_ROOT}/mtg_default-cards-20211128100240_normal_65903x256x184x3_c4.h5'
+      h5_dataset_name: 'data'
+      transform:
+        _target_: mtg_ml.util.transforms.ToStandardF32
+        size: NULL
+        mean: ${data.meta.img_mean}
+        std: ${data.meta.img_std}
+        pad_to_square: TRUE
+
+meta:
+  x_shape: [3, 256, 256]
+  img_size: 256
+  img_chn: 3
+  img_mean: 0.5
+  img_std: 0.5

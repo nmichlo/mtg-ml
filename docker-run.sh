@@ -17,3 +17,5 @@ docker run \
     --env PYTHONPATH=/workspace \
     mtgml39 \
     "$@"
+
+# --user="$(id -u):$(id -g)" \

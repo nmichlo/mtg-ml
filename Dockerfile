@@ -25,3 +25,6 @@ RUN pip install -r requirements-exp.txt
 # - https://horovod.readthedocs.io/en/stable/install_include.html
 # - https://pytorch-lightning.readthedocs.io/en/latest/advanced/multi_gpu.html
 RUN HOROVOD_WITH_PYTORCH=1 pip install horovod[pytorch]
+
+# change away from root
+#USER "${USER}"

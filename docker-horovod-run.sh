@@ -18,3 +18,5 @@ docker run \
     mtgml39 \
     horovodrun -np "$_num_gpus" -H "localhost:$_num_gpus" \
     "$@"
+
+# --user="$(id -u):$(id -g)" \

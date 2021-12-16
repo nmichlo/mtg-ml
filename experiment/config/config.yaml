@@ -1,5 +1,5 @@
 defaults:
-  - data: xyobject
+  - _self_
   - framework: sivae
   - run_location: docker
 
