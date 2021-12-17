@@ -30,10 +30,13 @@ from typing import Union
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.distributions import Distribution
 from torch.distributions import Normal
 
 from mtg_ml.nn.components import ActAndNorm
-from mtg_ml.nn.components import NormalDist
+from mtg_ml.nn.components import NormalDistLayer
+from mtg_ml.nn.components import TanhNormal
+from mtg_ml.nn.components import TanhNormalDistLayer
 
 
 # ========================================================================= #
@@ -116,38 +119,42 @@ def ReprUp(in_size: int, hidden_size: Optional[int], out_shape: Sequence[int]):
 
 class BaseGaussianVaeModel(nn.Module):
 
-    def __init__(self):
+    def __init__(
+        self,
+        encoder: nn.Module,
+        decoder: nn.Module,
+    ):
         super().__init__()
-        self._posterior_layer = NormalDist()
-
-    def _enc(self, x):
+        self._posterior_layer = self._make_posterior_layer()
         # this should take in a tensor of shape (B, C, H, W)
         # this should return a tensor of shape (B, 2 * LATENTS)
         # -> this is then wrapped with a normal distribution,
         #    the first half are the means, the second hald are
         #    the log(variances)
-        raise NotImplementedError
-
-    def _dec(self, z):
+        self.encoder = encoder
         # this should take in a tensor of shape (B, LATENTS)
         # this should return a tensor of shape (B, C, H, W)
-        raise NotImplementedError
+        self.decoder = decoder
 
-    def make_prior(self, posterior: Normal) -> Normal:
+    def _make_posterior_layer(self):
+        return NormalDistLayer()
+
+    def make_prior(self, posterior: Distribution) -> Distribution:
+        assert isinstance(posterior, Normal)
         return Normal(
             loc=torch.zeros_like(posterior.loc, requires_grad=False),
             scale=torch.ones_like(posterior.scale, requires_grad=False),
         )
 
-    def encode(self, x, return_prior=False) -> Union[Normal, Tuple[Normal, Normal]]:
-        posterior = self._posterior_layer(self._enc(x))
+    def encode(self, x, return_prior=False) -> Union[Distribution, Tuple[Distribution, Distribution]]:
+        posterior = self._posterior_layer(self.encoder(x))
         # return values
         if return_prior:
             return posterior, self.make_prior(posterior)
         return posterior
 
     def decode(self, z) -> torch.Tensor:
-        x_recon = self._dec(z)
+        x_recon = self.decoder(z)
         return x_recon
 
     def forward(self, x, detach_z=False) -> torch.Tensor:
@@ -158,7 +165,7 @@ class BaseGaussianVaeModel(nn.Module):
         recon = self.decode(z)
         return recon
 
-    def forward_train(self, x, detach_z=False) -> Tuple[torch.Tensor, torch.Tensor, Normal, Normal]:
+    def forward_train(self, x, detach_z=False) -> Tuple[torch.Tensor, torch.Tensor, Distribution, Distribution]:
         assert self.training, 'model not in training mode'
         # stochastic forward if training
         posterior, prior = self.encode(x, return_prior=True)
@@ -166,10 +173,55 @@ class BaseGaussianVaeModel(nn.Module):
         recon = self.decode(z)
         return recon, z, posterior, prior
 
+    def sample_z(self, batch_size: int, z_size: int, numpy: bool = False, device=None):
+        size = (batch_size, z_size)
+        if numpy:
+            return torch.from_numpy(np.random.randn(*size)).to(dtype=torch.float32, device=device)
+        else:
+            return torch.randn(size=size, dtype=torch.float32, device=device)
+
+
+# ========================================================================= #
+# Uniform VAE-like model                                                    #
+# ========================================================================= #
+
+
+class BaseTanhGaussianVaeModel(BaseGaussianVaeModel):
+
+    def __init__(
+        self,
+        encoder: nn.Module,
+        decoder: nn.Module,
+        posterior_scale: float = 1.0,
+    ):
+        super().__init__(encoder=encoder, decoder=decoder)
+        self._posterior_scale = posterior_scale
+
+    def _make_posterior_layer(self):
+        return TanhNormalDistLayer()
+
+    def make_prior(self, posterior: Distribution) -> Distribution:
+        assert isinstance(posterior, TanhNormal)
+        return TanhNormal(
+            normal_loc=torch.zeros_like(posterior.base_dist.loc, requires_grad=False),
+            normal_scale=torch.full_like(posterior.base_dist.scale, fill_value=self._posterior_scale, requires_grad=False),
+        )
+
+    @torch.no_grad()
+    def sample_z(self, batch_size: int, z_size: int, numpy: bool = False, device=None):
+        samples = super().sample_z(batch_size=batch_size, z_size=z_size, numpy=numpy, device=device)
+        return torch.tanh(samples)
+
+
+# ========================================================================= #
+# AE                                                                        #
+# ========================================================================= #
+
+
 
 class SimpleGaussianVaeModel(BaseGaussianVaeModel):
-    _enc = None
-    _dec = None
+    encoder = None
+    decoder = None
 
     def __init__(self, z_size: int = 128, repr_channels: int = 16, repr_hidden_size: Optional[int] = None, channel_mul=1.5, channel_start=16):
         super().__init__()

@@ -6,6 +6,7 @@ system_cls:
   z_size: 256
   model_double_fc: FALSE
   activation: leaky_relu_0.2  # leaky_relu_0.2, leaky_relu, swish
+  distribution_mode: normal  # normal, tanh_normal
   # training
   lr_enc: 2e-4
   lr_dec: 2e-4

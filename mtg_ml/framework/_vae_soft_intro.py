@@ -6,21 +6,23 @@ https://github.com/taldatech/soft-intro-vae-pytorch
 import dataclasses
 from typing import Dict
 from typing import Tuple
+from typing import Union
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
+from disent.util.function import wrapped_partial
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from mtg_ml import DATASET_ROOT
 from mtg_ml.nn.components import Act
-from mtg_ml.nn.model import BaseGaussianVaeModel
 from mtg_ml.nn.loss import get_recon_loss
 from mtg_ml.nn.loss import kl_div
-
+from mtg_ml.nn.model import BaseGaussianVaeModel
+from mtg_ml.nn.model import BaseTanhGaussianVaeModel
 from mtg_ml.util.ptl import MlSystem
 from mtg_ml.util.transforms import get_image_batch
 
@@ -190,27 +192,29 @@ class SoftIntroDecoder(nn.Module):
 # ========================================================================= #
 
 
-class SoftIntroVaeModel(BaseGaussianVaeModel):
-
-    def __init__(
-        self,
-        img_size: int = 256,
-        img_chn: int = 3,
-        z_size: int = 512,
-        conv_channels=(64, 128, 256, 512, 512, 512),
-        double_fc: bool = False,
-        activation: str = 'leaky_relu_0.2',
-    ):
-        super().__init__()
-        self.z_size = z_size
-        self._encoder = SoftIntroEncoder(img_size=img_size, img_chn=img_chn, z_size=z_size, double_fc=double_fc, activation=activation, conv_channels=conv_channels)
-        self._decoder = SoftIntroDecoder(img_size=img_size, img_chn=img_chn, z_size=z_size, double_fc=double_fc, activation=activation, conv_channels=conv_channels, conv_input_size=self._encoder.conv_output_size)
-
-    def _enc(self, x):
-        return self._encoder(x)
-
-    def _dec(self, z):
-        return self._decoder(z)
+def SoftIntroVaeModel(
+    img_size: int = 256,
+    img_chn: int = 3,
+    z_size: int = 512,
+    conv_channels=(64, 128, 256, 512, 512, 512),
+    double_fc: bool = False,
+    activation: str = 'leaky_relu_0.2',
+    distribution_mode: str = 'gaussian',
+) -> Union[BaseGaussianVaeModel, BaseTanhGaussianVaeModel]:
+    base_class = {
+        'normal': BaseGaussianVaeModel,
+        'tanh_normal':      BaseTanhGaussianVaeModel,
+        'tanh_normal_1.0':  BaseTanhGaussianVaeModel,
+        'tanh_normal_0.1':  wrapped_partial(BaseTanhGaussianVaeModel, posterior_scale=0.1),
+        'tanh_normal_0.25': wrapped_partial(BaseTanhGaussianVaeModel, posterior_scale=0.25),
+        'tanh_normal_0.5':  wrapped_partial(BaseTanhGaussianVaeModel, posterior_scale=0.5),
+    }[distribution_mode]
+    # make the model
+    encoder = SoftIntroEncoder(img_size=img_size, img_chn=img_chn, z_size=z_size, double_fc=double_fc, activation=activation, conv_channels=conv_channels)
+    decoder = SoftIntroDecoder(img_size=img_size, img_chn=img_chn, z_size=z_size, double_fc=double_fc, activation=activation, conv_channels=conv_channels, conv_input_size=encoder.conv_output_size)
+    vae = base_class(encoder=encoder, decoder=decoder)
+    # done!
+    return vae
 
 
 # ========================================================================= #
@@ -226,6 +230,7 @@ class SoftIntroVaeSystem(MlSystem):
             z_size: int = 128,
             model_double_fc: bool = True,
             activation: str = 'leaky_relu_0.2',
+            distribution_mode: str = 'normal',
         # training
             lr_enc: float = 2e-4,
             lr_dec: float = 2e-4,
@@ -256,6 +261,7 @@ class SoftIntroVaeSystem(MlSystem):
             conv_channels=self.hparams.conv_channels,
             double_fc=self.hparams.model_double_fc,
             activation=self.hparams.activation,
+            distribution_mode=self.hparams.distribution_mode,
         )
 
     def configure_optimizers(self):
@@ -373,11 +379,12 @@ class SoftIntroVaeSystem(MlSystem):
         return self.model(x)
 
     def sample_z(self, batch_size: int, numpy=False):
-        size = (batch_size, self.hparams.z_size)
-        if numpy:
-            return torch.from_numpy(np.random.randn(*size)).to(dtype=torch.float32, device=self.device)
-        else:
-            return torch.randn(size=size, dtype=torch.float32, device=self.device)
+        return self.model.sample_z(
+            batch_size=batch_size,
+            z_size=self.hparams.z_size,
+            numpy=numpy,
+            device=self.device,
+        )
 
     @torch.no_grad()
     def visualize_batch(self, xs: torch.Tensor) -> Dict[str, torch.Tensor]:
@@ -466,7 +473,6 @@ _SETTINGS = {
     'mnist':       ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=256,  z_size=32,  batch_size=128),
     'mtg':         ModelSettings(beta_kl=1.0, beta_rec=1.0, beta_neg=1024, z_size=256, batch_size=32),  # verify settings
 }
-
 
 # ========================================================================= #
 # END                                                                       #

@@ -1,7 +1,8 @@
 defaults:
   - _self_
+  - data: mtg64
   - framework: sivae
-  - run_location: docker
+  - run_location: docker # _horovod
 
 settings:
   job:
@@ -11,9 +12,17 @@ settings:
 
 trainer:
   _target_: pytorch_lightning.Trainer
+
+  # gpu to use
   gpus: 1
+
+  # training steps
   max_steps: 1000000
   max_epochs: 1000000
+
+  # training options
+  gradient_clip_val: 2.0  # I am not sure what a good value for this is!
+
   callbacks:
     - _target_: mtg_ml.util.ptl.VisualiseCallback
       name: 'vis'

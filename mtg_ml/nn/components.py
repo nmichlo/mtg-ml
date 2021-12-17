@@ -30,6 +30,8 @@ import torch
 from disent.nn.activations import Swish
 from torch import nn as nn
 from torch.distributions import Normal
+from torch.distributions import TanhTransform
+from torch.distributions import TransformedDistribution
 
 
 # ========================================================================= #
@@ -78,15 +80,60 @@ def ActAndNorm(shape_or_features: Optional[Union[Sequence[int], int]] = None, ac
 
 
 # ========================================================================= #
-# DISTS                                                                     #
+# Distributions                                                             #
 # ========================================================================= #
 
 
-class NormalDist(nn.Module):
+class TanhNormal(TransformedDistribution):
+    """
+    Alternative implementation:
+    https://github.com/rlworkgroup/garage/blob/master/src/garage/torch/distributions/tanh_normal.py
+    https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.212.2485&rep=rep1&type=pdf
+    """
+
+    base_dist: Normal
+
+    def __init__(self, normal_loc, normal_scale):
+        super().__init__(
+            base_distribution=Normal(loc=normal_loc, scale=normal_scale),
+            transforms=[TanhTransform()],
+        )
+
+    @property
+    def mean(self):
+        # TODO: this is only accurate for small scale values! ie. scale ~= 0
+        return torch.tanh(self.base_dist.mean)
+
+    @property
+    def variance(self):
+        raise NotImplementedError
+
+    def enumerate_support(self, expand=True):
+        raise NotImplementedError
+
+    def entropy(self):
+        raise NotImplementedError
+
+
+# ========================================================================= #
+# Distribution Layers                                                       #
+# ========================================================================= #
+
+
+class NormalDistLayer(nn.Module):
+
     def forward(self, z):
         assert z.ndim == 2, f'latent dimension was not flattened, could not instantiate posterior distribution with shape: {z.shape}'
         mu, log_var = z.chunk(2, dim=1)
         return Normal(loc=mu, scale=torch.exp(0.5 * log_var))
+
+
+class TanhNormalDistLayer(nn.Module):
+
+    def forward(self, z):
+        assert z.ndim == 2, f'latent dimension was not flattened, could not instantiate posterior distribution with shape: {z.shape}'
+        mu, log_var = z.chunk(2, dim=1)
+        return TanhNormal(normal_loc=mu, normal_scale=torch.exp(0.5 * log_var))
 
 
 # ========================================================================= #
